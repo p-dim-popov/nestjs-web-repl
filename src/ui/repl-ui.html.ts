@@ -1,5 +1,17 @@
 export function renderReplUi(channel: string): string {
   const safe = channel.replace(/[<>"'&]/g, '');
+  // Escapes the channel for safe embedding inside the inline <script> block
+  // below. JSON.stringify alone does NOT escape "</script>" or the U+2028/
+  // U+2029 line separators, so an attacker-controlled channel like
+  // "</script><script>alert(1)</script>" (a URL path segment) would close
+  // the script tag early and inject markup the HTML parser executes.
+  // Escaping "<" to "<" inside the JS string literal preserves the
+  // exact value ("<" IS "<" once JS parses the literal) while ensuring the
+  // HTML parser -- which tokenizes the raw bytes before any JS runs --
+  // never sees a literal "</script>" sequence.
+  const channelLiteral = JSON.stringify(channel)
+    .replace(/</g, '\\u003c')
+    .replace(/[\u2028\u2029]/g, (ch) => (ch === '\u2028' ? '\\u2028' : '\\u2029'));
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -31,7 +43,8 @@ export function renderReplUi(channel: string): string {
 </div>
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
 <script>
-  const channel = ${JSON.stringify(channel)};
+  const channel = ${channelLiteral};
+  const channelPath = encodeURIComponent(channel);
   const out = document.getElementById('out');
   const stateEl = document.getElementById('state');
   const dot = document.getElementById('dot');
@@ -49,7 +62,7 @@ export function renderReplUi(channel: string): string {
     out.scrollTop = out.scrollHeight;
   }
 
-  const es = new EventSource('../' + channel);
+  const es = new EventSource('../' + channelPath);
   es.onopen = () => { dot.classList.add('on'); stateEl.textContent='connected'; };
   es.onerror = () => { dot.classList.remove('on'); stateEl.textContent='reconnecting…'; };
   es.onmessage = (m) => {
@@ -95,7 +108,7 @@ export function renderReplUi(channel: string): string {
     const command = editor.getValue().trim();
     if(!command) return;
     editor.setValue('');
-    await fetch('../' + channel, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ command }) });
+    await fetch('../' + channelPath, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ command }) });
   }
   document.getElementById('run').addEventListener('click', run);
 </script>
