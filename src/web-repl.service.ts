@@ -118,7 +118,33 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     // guarantees currentCommandId is only ever the actively-executing
     // command, and that a queued command's echo is only emitted once it
     // actually starts executing (correct serial-execution semantics).
-    state.execQueue = state.execQueue.then(() => this.executeCommand(msg, state));
+    //
+    // Every link is wrapped so it always resolves, never rejects: if
+    // executeCommand throws (e.g. the injected buildContext() factory or
+    // the ReplSession constructor throws), an unguarded rejection would
+    // permanently poison state.execQueue -- every later
+    // `.then(onFulfilled)` chained onto an already-rejected promise is
+    // silently skipped, so every subsequent command on the channel would
+    // never execute again, with no client-visible error, until process
+    // restart. Instead we log it and best-effort surface it to clients as
+    // a `system` event tagged with the failing command's id, then let the
+    // chain continue so the channel stays usable.
+    state.execQueue = state.execQueue.then(() =>
+      this.executeCommand(msg, state).catch((err) => {
+        this.logger.error(`command ${msg.commandId} on ${msg.channel} failed: ${String(err)}`);
+        try {
+          return this.emit(msg.channel, 'system', msg.commandId, {
+            error: String((err as Error)?.message ?? err),
+          });
+        } catch (emitErr) {
+          // emit() itself only throws synchronously if JSON.stringify
+          // fails on a pathological error message; safePublish already
+          // swallows adapter failures. Never let this poison the queue.
+          this.logger.error(`failed to report command failure: ${String(emitErr)}`);
+          return undefined;
+        }
+      }),
+    );
     await state.execQueue;
   }
 

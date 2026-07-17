@@ -94,4 +94,84 @@ describe('WebReplService', () => {
 
     await svc.onModuleDestroy();
   });
+
+  it('keeps the channel alive after a command whose execution throws', async () => {
+    const adapter = new InMemoryWebReplAdapter();
+    let calls = 0;
+    // ensureSession only caches state.session *after* the ReplSession is
+    // successfully constructed, so a throwing buildContext() leaves
+    // nothing cached -- the factory is called again on the next command,
+    // which is what lets cmd2 recover and succeed.
+    const factory = () => {
+      calls++;
+      if (calls === 1) throw new Error('boom');
+      return { marker: () => 'ok' };
+    };
+    const svc = await makeService('A', adapter, factory);
+
+    const events: Array<{ type: string; commandId: string | null; data: unknown }> = [];
+    const sub = svc.stream('c5', null).subscribe((e) => events.push(e));
+
+    const { commandId: id1 } = await svc.dispatch('c5', '1 + 1');
+    await new Promise((r) => setTimeout(r, 20));
+    const { commandId: id2 } = await svc.dispatch('c5', '3 + 4');
+    await new Promise((r) => setTimeout(r, 50));
+    sub.unsubscribe();
+
+    const errorEvent = events.find(
+      (e) =>
+        e.type === 'system' &&
+        e.commandId === id1 &&
+        typeof (e.data as { error?: unknown })?.error === 'string',
+    );
+    expect(errorEvent).toBeDefined();
+
+    const outputEvent = events.find((e) => e.type === 'output' && e.commandId === id2);
+    expect(outputEvent).toBeDefined();
+    expect(String(outputEvent?.data)).toContain('7');
+
+    await svc.onModuleDestroy();
+  });
+
+  it('drops late output from a disposed session after a channel release (regression guard)', async () => {
+    // ReplSession does not guarantee zero onOutput writes after close() (a
+    // genuinely in-flight async eval can still emit late). Rather than
+    // race a real timing window to provoke that, drive the guard
+    // deterministically: grab the actual session the service created,
+    // force the same teardown a TTL/ownership release performs, then
+    // invoke that session's stored onOutput closure directly to simulate
+    // the late write and assert it's dropped, not re-buffered/replayed.
+    const adapter = new InMemoryWebReplAdapter();
+    const svc = await makeService('A', adapter);
+
+    await svc.dispatch('c6', '1 + 1');
+    await new Promise((r) => setTimeout(r, 20));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const internals = svc as any;
+    const state = internals.channels.get('c6');
+    const session = state.session;
+    expect(session).toBeDefined();
+
+    const events: Array<{ type: string; data: unknown }> = [];
+    const sub = svc.stream('c6', null).subscribe((e) => events.push(e));
+
+    // Same teardown path onSys runs for a `sys release` message.
+    internals.onSys({ channel: 'c6', kind: 'release', instanceId: 'A' });
+
+    // Simulate the disposed session's in-flight eval delivering output
+    // after teardown.
+    session.opts.onOutput('late-output-after-release');
+    await new Promise((r) => setTimeout(r, 20));
+    sub.unsubscribe();
+
+    expect(events.some((e) => String(e.data).includes('late-output-after-release'))).toBe(false);
+    expect(
+      state.buffer
+        .since(null)
+        .some((e: { data: unknown }) => String(e.data).includes('late-output-after-release')),
+    ).toBe(false);
+
+    await svc.onModuleDestroy();
+  });
 });
