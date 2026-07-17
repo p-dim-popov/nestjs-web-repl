@@ -28,6 +28,10 @@ interface ChannelState {
   session?: ReplSession;
   ttlTimer?: NodeJS.Timeout;
   currentCommandId: string | null;
+  // Serializes the whole announce -> eval -> done unit per channel (not
+  // just eval itself) so that currentCommandId is only ever the actively
+  // executing command. See onCmd/executeCommand.
+  execQueue: Promise<void>;
 }
 
 @Injectable()
@@ -104,6 +108,21 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
 
     const state = this.getChannel(msg.channel);
     this.touchTtl(msg.channel, state);
+
+    // Enqueue the whole announce -> eval -> done unit onto the channel's
+    // own execution queue. Without this, a second command dispatched to
+    // the same channel while the first's async output is still flushing
+    // would run its (synchronous) echo + currentCommandId assignment
+    // ahead of the first command's still-in-flight eval, mistagging the
+    // first command's trailing output with the second command's id. This
+    // guarantees currentCommandId is only ever the actively-executing
+    // command, and that a queued command's echo is only emitted once it
+    // actually starts executing (correct serial-execution semantics).
+    state.execQueue = state.execQueue.then(() => this.executeCommand(msg, state));
+    await state.execQueue;
+  }
+
+  private async executeCommand(msg: CmdMessage, state: ChannelState): Promise<void> {
     const session = this.ensureSession(msg.channel, state);
 
     await this.emit(msg.channel, 'command', msg.commandId, {
@@ -125,6 +144,14 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     const session = new ReplSession({
       context: this.buildContext(),
       onOutput: (chunk) => {
+        // Guard against a stray late write from an in-flight eval landing
+        // after this channel's session has been disposed/replaced (e.g.
+        // by a TTL release, which clears the buffer) -- ReplSession does
+        // not guarantee zero writes after close(). Comparing against the
+        // session captured in this closure (rather than a boolean flag)
+        // also correctly drops output from a session that's since been
+        // replaced by a fresh one for the same channel.
+        if (state.session !== session) return;
         void this.emit(channel, 'output', state.currentCommandId, chunk);
       },
     });
@@ -185,6 +212,7 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
         live: new Subject<WebReplEvent>(),
         nextId: 0,
         currentCommandId: null,
+        execQueue: Promise.resolve(),
       };
       this.channels.set(channel, state);
     }
