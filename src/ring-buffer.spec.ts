@@ -27,4 +27,12 @@ describe('EventRingBuffer', () => {
     b.push(ev(1)); b.clear();
     expect(b.since(null)).toEqual([]);
   });
+
+  it('since(null) returns an independent copy, not the internal array', () => {
+    const b = new EventRingBuffer(10);
+    b.push(ev(1));
+    const snapshot = b.since(null);
+    snapshot.push(ev(2));
+    expect(b.since(null).map((e) => e.id)).toEqual([1]);
+  });
 });
