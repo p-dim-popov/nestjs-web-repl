@@ -1,0 +1,32 @@
+{
+  "name": "nestjs-web-repl",
+  "version": "0.1.0",
+  "description": "Expose a live NestJS REPL over the network (HTTP + SSE + Monaco UI).",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^10 || ^11",
+    "@nestjs/core": "^10 || ^11",
+    "rxjs": "^7"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
+    "@nestjs/platform-express": "^11",
+    "@nestjs/testing": "^11",
+    "@types/node": "^20",
+    "@types/supertest": "^6",
+    "reflect-metadata": "^0.2",
+    "rxjs": "^7",
+    "supertest": "^7",
+    "typescript": "^5",
+    "vitest": "^2"
+  }
+}
