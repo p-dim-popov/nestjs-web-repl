@@ -63,4 +63,13 @@ describe('ReplSession', () => {
     s.close();
     expect(chunks.join('')).toContain('99');
   });
+
+  it('recovers from incomplete input without hanging the session', async () => {
+    const { chunks, onOutput } = collect();
+    const s = new ReplSession({ context: {}, onOutput });
+    await s.eval('const y = {'); // incomplete — must resolve, not hang
+    await s.eval('1 + 1'); // session must still work
+    s.close();
+    expect(chunks.join('')).toContain('2');
+  });
 });
