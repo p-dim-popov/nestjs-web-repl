@@ -46,4 +46,21 @@ describe('ReplSession', () => {
     s.close();
     expect(chunks.join('')).toContain('boom');
   });
+
+  it('awaits a resolved promise (top-level await)', async () => {
+    const { chunks, onOutput } = collect();
+    const s = new ReplSession({ context: {}, onOutput });
+    await s.eval('await Promise.resolve(42)');
+    s.close();
+    expect(chunks.join('')).toContain('42');
+  });
+
+  it('waits for a promise that resolves on a timer before eval resolves', async () => {
+    const { chunks, onOutput } = collect();
+    const s = new ReplSession({ context: {}, onOutput });
+    await s.eval('await new Promise((r) => setTimeout(() => r(99), 15))');
+    // eval() has already awaited; the value must be present synchronously now.
+    s.close();
+    expect(chunks.join('')).toContain('99');
+  });
 });

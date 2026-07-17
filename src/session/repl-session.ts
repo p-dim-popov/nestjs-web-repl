@@ -6,16 +6,28 @@ export interface ReplSessionOptions {
   onOutput: (chunk: string) => void;
 }
 
+// A prompt string that will never occur in legitimate REPL output (result
+// echoes, console output, or error reports). node:repl (with terminal:
+// false) re-writes the prompt to `output` exactly once per command, and,
+// critically, only after that command has fully settled: after a
+// synchronous result, after an awaited top-level promise resolves (however
+// long that takes), and after the domain-based uncaught-exception handler
+// finishes reporting a thrown error. That makes "the sentinel appeared in
+// output" a deterministic, timing-independent "this command is done"
+// signal that works uniformly across all of those cases.
+const SENTINEL = ' <<webrepl:done:9f3a1c>> ';
+
 export class ReplSession {
   private readonly input = new PassThrough();
   private readonly server: REPLServer;
   private queue: Promise<void> = Promise.resolve();
+  private buffer = '';
+  private resolveCurrent: (() => void) | null = null;
 
   constructor(private readonly opts: ReplSessionOptions) {
     const output = new Writable({
       write: (chunk, _enc, cb) => {
-        const text = chunk.toString();
-        if (text.length) opts.onOutput(text);
+        this.handleOutput(chunk.toString());
         cb();
       },
     });
@@ -25,7 +37,7 @@ export class ReplSession {
       output,
       terminal: false,
       useColors: false,
-      prompt: '',
+      prompt: SENTINEL,
       ignoreUndefined: true,
     });
 
@@ -50,6 +62,51 @@ export class ReplSession {
         opts.onOutput(this.format(a) + '\n');
       },
     };
+
+    // The initial prompt is written synchronously inside start(), before
+    // this constructor returns and therefore before any eval() call could
+    // possibly have registered a resolver yet. handleOutput() strips it
+    // (resolveCurrent is still null at this point) and forwards nothing,
+    // so it never leaks into onOutput and never spuriously resolves the
+    // first real eval().
+  }
+
+  /**
+   * Buffers incoming output text, strips every occurrence of SENTINEL
+   * before it reaches onOutput, and resolves the in-flight eval() promise
+   * (if any) each time a sentinel is found. A trailing partial match of
+   * SENTINEL is held back across writes so a sentinel split across two
+   * stream chunks is never mistakenly forwarded or missed.
+   */
+  private handleOutput(text: string): void {
+    this.buffer += text;
+
+    let idx: number;
+    while ((idx = this.buffer.indexOf(SENTINEL)) !== -1) {
+      const before = this.buffer.slice(0, idx);
+      if (before.length) this.opts.onOutput(before);
+      this.buffer = this.buffer.slice(idx + SENTINEL.length);
+
+      const resolve = this.resolveCurrent;
+      this.resolveCurrent = null;
+      resolve?.();
+    }
+
+    const holdBack = this.partialSentinelSuffixLength(this.buffer);
+    if (this.buffer.length > holdBack) {
+      const flush = this.buffer.slice(0, this.buffer.length - holdBack);
+      this.opts.onOutput(flush);
+      this.buffer = this.buffer.slice(this.buffer.length - holdBack);
+    }
+  }
+
+  /** Length of the longest suffix of `text` that is also a prefix of SENTINEL. */
+  private partialSentinelSuffixLength(text: string): number {
+    const max = Math.min(text.length, SENTINEL.length - 1);
+    for (let len = max; len > 0; len--) {
+      if (text.endsWith(SENTINEL.slice(0, len))) return len;
+    }
+    return 0;
   }
 
   private format(args: unknown[]): string {
@@ -65,21 +122,11 @@ export class ReplSession {
 
   private runLine(command: string): Promise<void> {
     return new Promise<void>((resolve) => {
+      // Registering the resolver before writing guarantees we never miss
+      // the sentinel that reports this command's completion, however long
+      // (or short) evaluation takes.
+      this.resolveCurrent = resolve;
       this.input.write(command + '\n');
-      // Drive the command through the REPLServer's normal line-processing
-      // path (as if typed at a terminal) rather than calling `server.eval`
-      // directly. `server.eval`'s callback is unreliable for synchronous
-      // top-level `throw` statements: node's REPL intercepts those via its
-      // domain-based uncaught-exception handler and writes the "Uncaught"
-      // report straight to `output` without ever invoking the eval
-      // callback, which would hang this promise forever. Writing to
-      // `input` sidesteps that: whatever path the REPL takes (normal
-      // result echo, console output, or the uncaught-exception report),
-      // it all flows through the same `output` stream. Two chained
-      // `setImmediate` ticks are enough to let that synchronous
-      // processing (and any immediate-scheduled follow-up, such as the
-      // uncaught handler) flush before we resolve.
-      setImmediate(() => setImmediate(resolve));
     });
   }
 
