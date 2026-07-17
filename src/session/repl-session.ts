@@ -16,12 +16,13 @@ export interface ReplSessionOptions {
 }
 
 // The non-terminal node:repl writes this exact two-character string, as its
-// own standalone `output` write, whenever a submitted line leaves a command
-// syntactically incomplete (an unmatched brace/paren/template literal) and
-// it is waiting for more input before it can finish parsing. Verified
-// empirically across `{`, `(`, `` ` ``, `function () {`, and `if (...) {`
-// on Node v26; this is what a human would see as node's "..." continuation
-// indicator in a real terminal.
+// own standalone `output` write, for every line that leaves a command
+// syntactically incomplete so far (an unmatched brace/paren/template
+// literal), whether or not the command is eventually completed by a later
+// line in the same batch. It is therefore only ever a *transient* signal,
+// never by itself proof that a command is permanently stuck -- see
+// checkForStuckIncompleteInput() for how genuine incompleteness is
+// determined. Verified empirically on Node v26.
 const CONTINUATION_PROMPT = '| ';
 
 export class ReplSession {
@@ -32,18 +33,26 @@ export class ReplSession {
   // that no two sessions ever share a sentinel, and collisions with
   // arbitrary user-controlled output are effectively impossible. node:repl
   // (with terminal: false) re-writes the prompt to `output` exactly once
-  // per command, and, critically, only after that command has fully
-  // settled: after a synchronous result, after an awaited top-level
-  // promise resolves (however long that takes), and after the domain-based
-  // uncaught-exception handler finishes reporting a thrown error. That
-  // makes "the sentinel appeared in output" a deterministic,
-  // timing-independent "this command is done" signal that works uniformly
-  // across all of those cases.
+  // per completed top-level statement, and, critically, only after that
+  // statement has fully settled: after a synchronous result, after an
+  // awaited top-level promise resolves (however long that takes), and
+  // after the domain-based uncaught-exception handler finishes reporting a
+  // thrown error. That makes "the sentinel appeared in output" a
+  // deterministic, timing-independent "this statement is done" signal that
+  // works uniformly across all of those cases.
   private readonly sentinel = `<<webrepl:done:${randomUUID()}>>`;
+  // The internal REPLServer state holding whatever raw source has been
+  // accumulated so far but not yet parsed into a complete, evaluatable
+  // statement -- empty once a submitted command is either fully complete
+  // or hasn't started. Located empirically on Node v26 (see constructor);
+  // used to distinguish "still working through a multi-line command" from
+  // "genuinely parked on incomplete input that will never complete".
+  private readonly bufferedCommandSymbol: symbol | undefined;
   private queue: Promise<void> = Promise.resolve();
   private buffer = '';
   private resolveCurrent: (() => void) | null = null;
   private watchdog: NodeJS.Timeout | null = null;
+  private closed = false;
 
   constructor(private readonly opts: ReplSessionOptions) {
     this.evalTimeoutMs = opts.evalTimeoutMs ?? 30000;
@@ -63,6 +72,10 @@ export class ReplSession {
       prompt: this.sentinel,
       ignoreUndefined: true,
     });
+
+    this.bufferedCommandSymbol = Object.getOwnPropertySymbols(this.server).find(
+      (s) => s.description === 'bufferedCommand',
+    );
 
     for (const key of Object.keys(opts.context)) {
       this.server.context[key] = opts.context[key];
@@ -101,19 +114,17 @@ export class ReplSession {
    * the sentinel is held back across writes so a sentinel split across two
    * stream chunks is never mistakenly forwarded or missed.
    *
-   * Also watches for the REPL's continuation prompt: a command left
-   * incomplete (e.g. `const y = {`) never produces the sentinel on its
-   * own, and because evals are serialized that would otherwise hang this
-   * session forever. User output can never collide with this check: real
-   * console output is captured via the context.console override below
-   * (which calls onOutput directly, bypassing this stream entirely), and
-   * expression-result echoes are always util.inspect-formatted with a
-   * trailing newline (a bare string result would be quoted, e.g. `'| '\n`,
-   * never the raw two-character marker checked for here).
+   * The bare continuation-prompt marker is filtered out (never forwarded
+   * as output) but, on its own, is NOT treated as a "this command is
+   * stuck" signal -- a legitimate multi-line command supplied as one
+   * eval() string transiently produces this marker for every line that
+   * doesn't yet close out a statement before the final line completes it.
+   * Reacting to the first occurrence would wrongly abort those valid
+   * commands. See checkForStuckIncompleteInput() for the real recovery
+   * path.
    */
   private handleOutput(text: string): void {
-    if (text === CONTINUATION_PROMPT && this.resolveCurrent) {
-      this.recoverFromIncompleteInput();
+    if (text === CONTINUATION_PROMPT) {
       return;
     }
 
@@ -142,6 +153,30 @@ export class ReplSession {
       if (text.endsWith(this.sentinel.slice(0, len))) return len;
     }
     return 0;
+  }
+
+  /**
+   * Called shortly after a command has been written to `input`, once
+   * node:repl has had a chance to drain and process every line of it
+   * (including every line of a multi-line command written as one
+   * string). If the eval already resolved via the sentinel, this is a
+   * no-op. Otherwise, reads node:repl's own buffered-command state: a
+   * non-empty buffer at this point means the submitted text left a
+   * trailing statement that is syntactically incomplete and will never
+   * complete on its own (there is no more input coming for it), so we
+   * recover instead of waiting forever. An empty buffer means parsing
+   * fully consumed the input -- whether it already finished evaluating
+   * (sync) or is still running (e.g. a pending top-level await) -- so we
+   * leave it alone and let the sentinel (or, failing that, the watchdog)
+   * resolve it whenever it's actually done.
+   */
+  private checkForStuckIncompleteInput(): void {
+    if (!this.resolveCurrent) return;
+    if (this.bufferedCommandSymbol === undefined) return;
+    const buffered = (this.server as unknown as Record<symbol, unknown>)[this.bufferedCommandSymbol];
+    if (typeof buffered === 'string' && buffered.length > 0) {
+      this.recoverFromIncompleteInput();
+    }
   }
 
   /**
@@ -178,17 +213,24 @@ export class ReplSession {
   }
 
   private runLine(command: string): Promise<void> {
+    if (this.closed) {
+      // The session was closed before this queued eval() got its turn.
+      // Resolve immediately rather than writing to a destroyed input
+      // stream (which would hang or error).
+      return Promise.resolve();
+    }
+
     return new Promise<void>((resolve) => {
       // Registering the resolver before writing guarantees we never miss
       // the sentinel that reports this command's completion, however long
       // (or short) evaluation takes.
       this.resolveCurrent = resolve;
 
-      // Defense-in-depth safety net: the continuation-prompt check above is
-      // the primary, deterministic mechanism for avoiding a permanent hang
-      // on incomplete input. This watchdog only matters if some other,
+      // Defense-in-depth safety net: the drain-check below is the
+      // primary, deterministic mechanism for avoiding a permanent hang on
+      // incomplete input. This watchdog only matters if some other,
       // unanticipated input shape defeats both the sentinel and the
-      // continuation-prompt signal; it should not fire in normal use.
+      // buffered-command check; it should not fire in normal use.
       this.watchdog = setTimeout(() => {
         this.server.clearBufferedCommand?.();
         this.opts.onOutput('Error: eval timed out\n');
@@ -197,10 +239,19 @@ export class ReplSession {
       this.watchdog.unref?.();
 
       this.input.write(command + '\n');
+
+      // Give node:repl's readline two macrotask ticks to fully drain and
+      // process every line of the command just written (verified
+      // empirically sufficient on Node v26, including for multi-line
+      // commands where all of the processing actually happens
+      // synchronously within the input.write() call above), then check
+      // whether it's left holding an incomplete trailing statement.
+      setImmediate(() => setImmediate(() => this.checkForStuckIncompleteInput()));
     });
   }
 
   close(): void {
+    this.closed = true;
     // Resolve any eval() a caller might still be awaiting so shutdown
     // never leaves it hanging.
     this.settle();
