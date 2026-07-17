@@ -5,7 +5,9 @@
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests",
@@ -21,12 +23,14 @@
     "@nestjs/core": "^11",
     "@nestjs/platform-express": "^11",
     "@nestjs/testing": "^11",
+    "@swc/core": "^1.15.43",
     "@types/node": "^20",
     "@types/supertest": "^6",
     "reflect-metadata": "^0.2",
     "rxjs": "^7",
     "supertest": "^7",
     "typescript": "^5",
+    "unplugin-swc": "^1.5.9",
     "vitest": "^2"
   }
 }
