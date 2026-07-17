@@ -20,4 +20,8 @@ export class EventRingBuffer {
   clear(): void {
     this.events.length = 0;
   }
+
+  isEmpty(): boolean {
+    return this.events.length === 0;
+  }
 }

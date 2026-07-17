@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { firstValueFrom, toArray } from 'rxjs';
 import { take } from 'rxjs/operators';
 import { WebReplService } from './web-repl.service';
@@ -171,6 +172,94 @@ describe('WebReplService', () => {
         .since(null)
         .some((e: { data: unknown }) => String(e.data).includes('late-output-after-release')),
     ).toBe(false);
+
+    await svc.onModuleDestroy();
+  });
+
+  // --- CRITICAL 1: `enabled` must be enforced at runtime, not just at
+  // module-registration time, so a forRootAsync-resolved `enabled: false`
+  // can't ship a live execution endpoint. ---
+  describe('when disabled at runtime', () => {
+    const makeDisabledService = (adapter: InMemoryWebReplAdapter) => {
+      const options: WebReplModuleOptions = { enabled: false, instanceId: 'D', adapter };
+      return new WebReplService(options, adapter, () => ({ marker: () => 'ctx-ok' }));
+    };
+
+    it('does not subscribe to the adapter on onModuleInit', async () => {
+      const adapter = new InMemoryWebReplAdapter();
+      const subscribeSpy = vi.spyOn(adapter, 'subscribe');
+      const svc = makeDisabledService(adapter);
+
+      await svc.onModuleInit();
+
+      expect(subscribeSpy).not.toHaveBeenCalled();
+      await svc.onModuleDestroy();
+    });
+
+    it('dispatch() throws NotFoundException and never publishes a command', async () => {
+      const adapter = new InMemoryWebReplAdapter();
+      const publishSpy = vi.spyOn(adapter, 'publish');
+      const svc = makeDisabledService(adapter);
+      await svc.onModuleInit();
+
+      await expect(svc.dispatch('dchan', '1 + 1')).rejects.toThrow(NotFoundException);
+      expect(publishSpy).not.toHaveBeenCalled();
+
+      await svc.onModuleDestroy();
+    });
+
+    it('stream() throws NotFoundException instead of returning an observable', async () => {
+      const adapter = new InMemoryWebReplAdapter();
+      const svc = makeDisabledService(adapter);
+      await svc.onModuleInit();
+
+      expect(() => svc.stream('dchan', null)).toThrow(NotFoundException);
+
+      await svc.onModuleDestroy();
+    });
+  });
+
+  // --- IMPORTANT 3 / MINOR 4: a channel created merely by a GET (SSE
+  // subscribe) with no dispatched command must be evicted once its last
+  // subscriber disconnects, so an unauthenticated client looping
+  // `GET /repl/<random>` can't grow the channels map without bound. ---
+  it('evicts a subscriber-less, session-less, empty-buffer channel once the last subscriber unsubscribes', async () => {
+    const adapter = new InMemoryWebReplAdapter();
+    const svc = await makeService('A', adapter);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const internals = svc as any;
+
+    const sub = svc.stream('ghost-chan', null).subscribe();
+    // Subscribing lazily creates the channel state (via getChannel at
+    // subscribe time), so it should now be present in the map.
+    expect(internals.channels.has('ghost-chan')).toBe(true);
+
+    sub.unsubscribe();
+
+    // No command was ever dispatched on this channel, so there is no
+    // session and the replay buffer is empty -- the channel must be
+    // evicted, not retained forever.
+    expect(internals.channels.has('ghost-chan')).toBe(false);
+
+    await svc.onModuleDestroy();
+  });
+
+  it('does not evict a channel that still has buffered replay history after its subscriber leaves', async () => {
+    const adapter = new InMemoryWebReplAdapter();
+    const svc = await makeService('A', adapter);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const internals = svc as any;
+
+    await svc.dispatch('busy-chan', '1 + 1');
+    await new Promise((r) => setTimeout(r, 20));
+
+    const sub = svc.stream('busy-chan', null).subscribe();
+    sub.unsubscribe();
+
+    // The channel has a live session and/or buffered events -- it must be
+    // retained so a reconnecting client can still replay history.
+    expect(internals.channels.has('busy-chan')).toBe(true);
 
     await svc.onModuleDestroy();
   });

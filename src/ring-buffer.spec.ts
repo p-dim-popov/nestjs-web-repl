@@ -35,4 +35,13 @@ describe('EventRingBuffer', () => {
     snapshot.push(ev(2));
     expect(b.since(null).map((e) => e.id)).toEqual([1]);
   });
+
+  it('isEmpty() reflects push/clear', () => {
+    const b = new EventRingBuffer(10);
+    expect(b.isEmpty()).toBe(true);
+    b.push(ev(1));
+    expect(b.isEmpty()).toBe(false);
+    b.clear();
+    expect(b.isEmpty()).toBe(true);
+  });
 });

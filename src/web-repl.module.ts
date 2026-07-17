@@ -36,7 +36,13 @@ export class WebReplModule {
       imports: async.imports ?? [],
       providers: [optionsProvider, ...this.sharedProviders()],
       controllers: [WebReplController],
-      exports: [WebReplService],
+      // WEB_REPL_OPTIONS must be exported alongside WebReplService: since
+      // WebReplController (and any subclass of it, per the README's
+      // "Securing it" pattern) now injects WEB_REPL_OPTIONS to enforce
+      // `enabled` at runtime (see CRITICAL 1), a caller who mounts their
+      // own guarded subclass controller on a SIBLING module (with
+      // registerController: false) needs to be able to resolve it too.
+      exports: [WebReplService, WEB_REPL_OPTIONS],
     };
   }
 
@@ -48,7 +54,7 @@ export class WebReplModule {
       module: WebReplModule,
       providers: [...optionProviders, ...this.sharedProviders()],
       controllers: options.registerController === false ? [] : [WebReplController],
-      exports: [WebReplService],
+      exports: [WebReplService, WEB_REPL_OPTIONS],
     };
   }
 

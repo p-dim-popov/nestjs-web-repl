@@ -276,6 +276,15 @@ and the types `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleAsyncOptio
   `webrepl:sys` adapter topic) is processed last by the group determines the
   actual owner going forward. This is a narrow window (first command on a
   channel only) but is not fully resolved by the protocol as implemented.
+- **A crashed/restarted owner wedges its channels fleet-wide.** Ownership is
+  only released by an explicit `release` message on the `webrepl:sys` topic
+  (sent on TTL expiry). If the instance that owns a channel crashes or is
+  restarted instead of shutting down cleanly, no `release` is ever
+  published, so surviving instances still record it as the owner and
+  silently ignore any new commands for that channel — the channel is dead
+  fleet-wide until the owning instance (or an instance that reclaims the
+  same identity) comes back. This is a known v1 multi-instance limitation,
+  alongside last-claim-wins above.
 - **Relies on a deep import of `@nestjs/core` internals**
   (`@nestjs/core/nest-application-context`, `@nestjs/core/repl/repl-context`)
   to build an app-wide REPL context, since only the `repl()` bootstrap

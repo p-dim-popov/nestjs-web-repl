@@ -1,9 +1,10 @@
-import { Injectable, INestApplication, Module } from '@nestjs/common';
+import { Controller, Injectable, INestApplication, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { WebReplModule } from './web-repl.module';
+import { WebReplController } from './web-repl.controller';
 import { WebReplService } from './web-repl.service';
 
 describe('WebReplModule', () => {
@@ -30,6 +31,44 @@ describe('WebReplModule', () => {
 
     const post = await request(app.getHttpServer()).post('/repl/e2e').send({ command: '3+4' });
     expect(post.status).toBe(202);
+
+    await app.close();
+  });
+
+  // CRITICAL 1: forRootAsync resolves options at DI time and always
+  // registers the controller + service (providers/controllers must be
+  // declared statically before useFactory ever runs) -- so `enabled` must
+  // be re-checked at runtime, or `forRootAsync({ useFactory: () => ({
+  // enabled: false }) })` would ship a fully-live arbitrary-code-execution
+  // endpoint. This must 404 on all three routes, matching the sync
+  // forRoot(enabled: false) path's "nothing registered -> 404" behavior,
+  // and must never actually execute a command.
+  it('forRootAsync with enabled:false returns 404 on every route and never executes a command', async () => {
+    const mod = await Test.createTestingModule({
+      imports: [
+        WebReplModule.forRootAsync({
+          useFactory: () => ({ enabled: false }),
+        }),
+      ],
+    }).compile();
+    const app: INestApplication = mod.createNestApplication();
+    await app.init();
+
+    const ui = await request(app.getHttpServer()).get('/repl/x/ui');
+    expect(ui.status).toBe(404);
+
+    const post = await request(app.getHttpServer()).post('/repl/x').send({ command: '1+1' });
+    expect(post.status).toBe(404);
+
+    const sse = await request(app.getHttpServer())
+      .get('/repl/x')
+      .set('Accept', 'text/event-stream');
+    expect(sse.status).toBe(404);
+
+    // Confirm nothing actually ran: the service itself must also refuse to
+    // execute, as defense-in-depth beyond the controller's own 404s.
+    const svc = app.get(WebReplService);
+    await expect(svc.dispatch('x', '1+1')).rejects.toThrow();
 
     await app.close();
   });
@@ -78,6 +117,34 @@ describe('WebReplModule', () => {
 
     expect(() => app.get(WebReplService)).not.toThrow();
     expect(app.get(WebReplService)).toBeInstanceOf(WebReplService);
+
+    await app.close();
+  });
+
+  // Regression guard for the README's documented "Securing it" pattern: a
+  // subclass of WebReplController, registered directly on a SIBLING
+  // module's `controllers` array (not inside the DynamicModule
+  // WebReplModule.forRoot() returns), with `registerController: false` so
+  // only the guarded subclass is exposed. WebReplController's constructor
+  // now also injects WEB_REPL_OPTIONS (for the enabled-check added in
+  // CRITICAL 1) -- that token must be exported by WebReplModule, or this
+  // documented pattern breaks with a DI resolution error.
+  it('supports the README "Securing it" pattern: a subclass controller registered in a sibling module', async () => {
+    @Controller('internal/repl')
+    class SecureReplController extends WebReplController {}
+
+    @Module({
+      imports: [WebReplModule.forRoot({ enabled: true, registerController: false })],
+      controllers: [SecureReplController],
+    })
+    class AppModule {}
+
+    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const app: INestApplication = mod.createNestApplication();
+    await app.init();
+
+    const ui = await request(app.getHttpServer()).get('/internal/repl/x/ui');
+    expect(ui.status).toBe(200);
 
     await app.close();
   });

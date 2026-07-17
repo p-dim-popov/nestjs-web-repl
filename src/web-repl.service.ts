@@ -2,11 +2,12 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
-import { Observable, Subject, merge, from, interval } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { Observable, Subject, defer, merge, from, interval } from 'rxjs';
+import { finalize, map } from 'rxjs/operators';
 import { WEB_REPL_ADAPTER, WEB_REPL_OPTIONS, TOPICS, DEFAULTS } from './constants';
 import type { WebReplAdapter } from './interfaces/web-repl-adapter.interface';
 import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
@@ -32,6 +33,11 @@ interface ChannelState {
   // just eval itself) so that currentCommandId is only ever the actively
   // executing command. See onCmd/executeCommand.
   execQueue: Promise<void>;
+  // Count of live SSE subscribers currently attached to this channel's
+  // stream(). Used by maybeEvict() to garbage-collect channels that were
+  // created merely by an (unauthenticated) GET and never actually used --
+  // see IMPORTANT 3 in the review.
+  subscriberCount: number;
 }
 
 @Injectable()
@@ -41,6 +47,7 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
   private readonly sessionTtl: number;
   private readonly replayBufferSize: number;
   private readonly heartbeatInterval: number;
+  private readonly enabled: boolean;
   private readonly ownership = new Map<string, string>();
   private readonly channels = new Map<string, ChannelState>();
   private counter = 0;
@@ -54,9 +61,17 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     this.sessionTtl = options.sessionTtl ?? DEFAULTS.sessionTtl;
     this.replayBufferSize = options.replayBufferSize ?? DEFAULTS.replayBufferSize;
     this.heartbeatInterval = options.heartbeatInterval ?? DEFAULTS.heartbeatInterval;
+    this.enabled = options.enabled;
   }
 
   async onModuleInit(): Promise<void> {
+    // CRITICAL: `enabled` is the product's only safety rail. forRoot()
+    // already refuses to register anything when disabled, but
+    // forRootAsync() resolves options at DI time and always registers this
+    // service/controller -- so this runtime check is what keeps a
+    // config-driven `enabled: false` (e.g. from forRootAsync) from
+    // silently subscribing to the command bus and executing arbitrary code.
+    if (!this.enabled) return;
     await this.adapter.subscribe(TOPICS.cmd, (m) => this.onCmd(this.parse<CmdMessage>(m)));
     await this.adapter.subscribe(TOPICS.out, (m) => this.onOut(this.parse<OutMessage>(m)));
     await this.adapter.subscribe(TOPICS.sys, (m) => this.onSys(this.parse<SysMessage>(m)));
@@ -73,6 +88,7 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
   }
 
   async dispatch(channel: string, command: string): Promise<{ commandId: string }> {
+    if (!this.enabled) throw new NotFoundException();
     const commandId = `cmd_${(++this.counter).toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     const msg: CmdMessage = { channel, commandId, command, originInstanceId: this.instanceId };
     await this.safePublish(TOPICS.cmd, msg);
@@ -80,14 +96,26 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
   }
 
   stream(channel: string, lastEventId: number | null): Observable<WebReplEvent> {
-    const state = this.getChannel(channel);
-    const replayed = state.buffer.since(lastEventId);
-    const heartbeat = interval(this.heartbeatInterval).pipe(
-      map(
-        (): WebReplEvent => ({ id: 0, type: 'system', commandId: null, data: { ping: true } }),
-      ),
-    );
-    return merge(from(replayed), state.live.asObservable(), heartbeat);
+    if (!this.enabled) throw new NotFoundException();
+    // Wrapped in defer() so the replay snapshot is taken -- and the
+    // subscriber-count bookkeeping runs -- at SUBSCRIBE time rather than
+    // when the controller calls stream(). Without this, an event
+    // published between the call to stream() and Nest actually attaching
+    // the subscription would be missed by both the frozen replay snapshot
+    // and the not-yet-attached live subscription (MINOR 4).
+    return defer(() => {
+      const state = this.getChannel(channel);
+      state.subscriberCount++;
+      const replayed = state.buffer.since(lastEventId);
+      const heartbeat = interval(this.heartbeatInterval).pipe(
+        map(
+          (): WebReplEvent => ({ id: 0, type: 'system', commandId: null, data: { ping: true } }),
+        ),
+      );
+      return merge(from(replayed), state.live.asObservable(), heartbeat).pipe(
+        finalize(() => this.onUnsubscribe(channel)),
+      );
+    });
   }
 
   private async onCmd(msg: CmdMessage): Promise<void> {
@@ -215,7 +243,32 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
         state.session = undefined;
         state.buffer.clear();
       }
+      if (state) this.maybeEvict(msg.channel, state);
     }
+  }
+
+  // IMPORTANT 3: stream() (a bare GET) creates and stores a ChannelState
+  // for any channel name on first subscribe. Nothing else removes it --
+  // TTL release tears down the session+buffer but previously left the
+  // ChannelState (and its live Subject) in the map forever. An
+  // unauthenticated client looping `GET /repl/<random>` would grow
+  // `this.channels` without bound. Evict a channel once it has no live SSE
+  // subscribers AND no active session AND an empty replay buffer -- a
+  // channel with buffered history but no subscribers is deliberately kept
+  // around until TTL release clears its buffer, so a reconnecting client
+  // can still replay.
+  private onUnsubscribe(channel: string): void {
+    const state = this.channels.get(channel);
+    if (!state) return;
+    state.subscriberCount = Math.max(0, state.subscriberCount - 1);
+    this.maybeEvict(channel, state);
+  }
+
+  private maybeEvict(channel: string, state: ChannelState): void {
+    if (state.subscriberCount > 0) return;
+    if (state.session) return;
+    if (!state.buffer.isEmpty()) return;
+    this.channels.delete(channel);
   }
 
   private touchTtl(channel: string, state: ChannelState): void {
@@ -239,6 +292,7 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
         nextId: 0,
         currentCommandId: null,
         execQueue: Promise.resolve(),
+        subscriberCount: 0,
       };
       this.channels.set(channel, state);
     }
