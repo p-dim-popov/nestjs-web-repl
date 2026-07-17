@@ -11,7 +11,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "example": "ts-node -T example/main.ts"
   },
   "peerDependencies": {
     "@nestjs/common": "^10 || ^11",
@@ -29,6 +30,7 @@
     "reflect-metadata": "^0.2",
     "rxjs": "^7",
     "supertest": "^7",
+    "ts-node": "^10.9.2",
     "typescript": "^5",
     "unplugin-swc": "^1.5.9",
     "vitest": "^2"
