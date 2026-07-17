@@ -30,4 +30,13 @@ describe('InMemoryWebReplAdapter', () => {
     expect(one).toEqual(['claim']);
     expect(two).toEqual(['claim']);
   });
+
+  it('delivers a published message back to the publishing instance (uniform dispatch)', async () => {
+    const a = new InMemoryWebReplAdapter();
+    const ownReceived: string[] = [];
+    await a.subscribe('webrepl:cmd', (m) => ownReceived.push(m));
+    await a.publish('webrepl:cmd', 'self');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ownReceived).toEqual(['self']);
+  });
 });
