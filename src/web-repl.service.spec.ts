@@ -263,4 +263,80 @@ describe('WebReplService', () => {
 
     await svc.onModuleDestroy();
   });
+
+  // --- Follow-up fix from re-review: the eviction guard above (subscriber
+  // count + no session + empty buffer) has no notion of an in-flight
+  // command. onCmd captures `state` and passes it down to
+  // executeCommand(), which lazily creates the ReplSession in
+  // ensureSession(). If the last subscriber unsubscribes -- and evicts the
+  // channel -- in the window between onCmd fetching `state` and
+  // ensureSession() actually running, the session gets created on the now
+  // off-map, orphaned `state` object, while later emit() calls re-resolve
+  // through getChannel() to a brand-new state: the command's own 'command'
+  // event lands correctly (its commandId is passed explicitly), but its
+  // 'output' event(s) -- which read state.currentCommandId off the
+  // orphaned closure -- get mis-tagged commandId: null, the orphaned
+  // ReplSession is leaked (never close()d), and the next command on the
+  // channel gets a second, disconnected session (breaking REPL variable
+  // continuity). Reproduced deterministically (not via real timer/microtask
+  // racing) by calling the private onCmd() directly and unsubscribing in
+  // the exact window between its synchronous `pending` increment and its
+  // first `await`. ---
+  it('keeps an in-flight command session-consistent even if the last subscriber unsubscribes mid-dispatch', async () => {
+    const adapter = new InMemoryWebReplAdapter();
+    const svc = await makeService('A', adapter);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const internals = svc as any;
+
+    const channel = 'race-chan';
+    const sub = svc.stream(channel, null).subscribe();
+    const stateBefore = internals.channels.get(channel);
+    expect(stateBefore).toBeDefined();
+
+    const msg = {
+      channel,
+      commandId: 'race-cmd-1',
+      command: '1 + 1',
+      originInstanceId: 'A',
+    };
+
+    // onCmd increments `pending` and resolves `state` SYNCHRONOUSLY, before
+    // its first `await` (the ownership `claim` publish, since this is a
+    // brand-new channel) -- so calling it without awaiting, then
+    // unsubscribing immediately, deterministically lands in the exact
+    // vulnerable window the review identified.
+    const onCmdDone: Promise<void> = internals.onCmd(msg);
+
+    expect(stateBefore.pending).toBeGreaterThan(0);
+
+    sub.unsubscribe();
+
+    // The channel must survive the eviction check that unsubscribing
+    // triggers, because a command is still pending on it.
+    expect(internals.channels.has(channel)).toBe(true);
+    expect(internals.channels.get(channel)).toBe(stateBefore);
+
+    await onCmdDone;
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Still the exact same ChannelState object -- no orphaned/duplicate
+    // state was created for this channel while the command ran.
+    expect(internals.channels.get(channel)).toBe(stateBefore);
+
+    // Exactly one session exists, and it's the one that actually executed
+    // the command (not orphaned on a since-deleted state object).
+    expect(stateBefore.session).toBeDefined();
+
+    const events = stateBefore.buffer.since(null) as Array<{
+      type: string;
+      commandId: string | null;
+      data: unknown;
+    }>;
+    const outputEvent = events.find((e) => e.type === 'output');
+    expect(outputEvent).toBeDefined();
+    expect(outputEvent?.commandId).toBe('race-cmd-1');
+    expect(String(outputEvent?.data)).toContain('2');
+
+    await svc.onModuleDestroy();
+  });
 });

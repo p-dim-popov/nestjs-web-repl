@@ -38,6 +38,15 @@ interface ChannelState {
   // created merely by an (unauthenticated) GET and never actually used --
   // see IMPORTANT 3 in the review.
   subscriberCount: number;
+  // Count of commands currently claimed-for-execution-or-in-flight on this
+  // channel (incremented synchronously in onCmd before any await,
+  // decremented once the command's execQueue unit fully settles). Used by
+  // maybeEvict() to guard against evicting a channel out from under an
+  // in-flight command: without this, the last SSE subscriber unsubscribing
+  // between onCmd's getChannel() and executeCommand's ensureSession() could
+  // evict this exact ChannelState, orphaning the freshly created
+  // ReplSession and mis-tagging the command's output with commandId: null.
+  pending: number;
 }
 
 @Injectable()
@@ -125,6 +134,22 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
 
     if (!iAmOwner && !(noOwner && msg.originInstanceId === this.instanceId)) return;
 
+    // Resolve (or create) the channel state and mark a command as pending
+    // SYNCHRONOUSLY here, before any `await` below -- i.e. within the same
+    // microtask that decided this instance will execute the command. This
+    // closes a race with channel eviction (see maybeEvict / IMPORTANT 3):
+    // without a `pending` guard set this early, the last SSE subscriber
+    // could unsubscribe -- and evict this exact ChannelState from
+    // `this.channels` -- in the window between here and
+    // executeCommand()'s ensureSession() call. That would orphan the
+    // freshly created ReplSession on the now off-map `state` object (never
+    // close()d) while later emit() calls re-resolve through getChannel()
+    // to a brand new state, mis-tagging this command's output with
+    // commandId: null and forcing a second, disconnected ReplSession to be
+    // created for the next command on the same channel.
+    const state = this.getChannel(msg.channel);
+    state.pending++;
+
     if (noOwner) {
       this.ownership.set(msg.channel, this.instanceId);
       await this.safePublish(TOPICS.sys, {
@@ -134,7 +159,6 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
       } satisfies SysMessage);
     }
 
-    const state = this.getChannel(msg.channel);
     this.touchTtl(msg.channel, state);
 
     // Enqueue the whole announce -> eval -> done unit onto the channel's
@@ -158,20 +182,28 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     // a `system` event tagged with the failing command's id, then let the
     // chain continue so the channel stays usable.
     state.execQueue = state.execQueue.then(() =>
-      this.executeCommand(msg, state).catch((err) => {
-        this.logger.error(`command ${msg.commandId} on ${msg.channel} failed: ${String(err)}`);
-        try {
-          return this.emit(msg.channel, 'system', msg.commandId, {
-            error: String((err as Error)?.message ?? err),
-          });
-        } catch (emitErr) {
-          // emit() itself only throws synchronously if JSON.stringify
-          // fails on a pathological error message; safePublish already
-          // swallows adapter failures. Never let this poison the queue.
-          this.logger.error(`failed to report command failure: ${String(emitErr)}`);
-          return undefined;
-        }
-      }),
+      this.executeCommand(msg, state)
+        .catch((err) => {
+          this.logger.error(`command ${msg.commandId} on ${msg.channel} failed: ${String(err)}`);
+          try {
+            return this.emit(msg.channel, 'system', msg.commandId, {
+              error: String((err as Error)?.message ?? err),
+            });
+          } catch (emitErr) {
+            // emit() itself only throws synchronously if JSON.stringify
+            // fails on a pathological error message; safePublish already
+            // swallows adapter failures. Never let this poison the queue.
+            this.logger.error(`failed to report command failure: ${String(emitErr)}`);
+            return undefined;
+          }
+        })
+        .finally(() => {
+          // Only now -- once this command's announce -> eval -> done (or
+          // error) unit has fully settled -- may the channel become
+          // eviction-eligible again.
+          state.pending--;
+          this.maybeEvict(msg.channel, state);
+        }),
     );
     await state.execQueue;
   }
@@ -265,6 +297,7 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
   }
 
   private maybeEvict(channel: string, state: ChannelState): void {
+    if (state.pending > 0) return;
     if (state.subscriberCount > 0) return;
     if (state.session) return;
     if (!state.buffer.isEmpty()) return;
@@ -293,6 +326,7 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
         currentCommandId: null,
         execQueue: Promise.resolve(),
         subscriberCount: 0,
+        pending: 0,
       };
       this.channels.set(channel, state);
     }
