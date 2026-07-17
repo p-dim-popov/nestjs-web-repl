@@ -162,8 +162,10 @@ different instance than the one holding your session's variables. Web-repl
 solves this with an **ownership + fan-out** protocol:
 
 - The **first instance** to see a command for a given channel claims
-  ownership of that channel (broadcasting a `claim` system message) and is
-  the only instance that actually runs commands on it from then on.
+  ownership of that channel (broadcasting an internal `claim` message on the
+  `webrepl:sys` adapter topic — not a client-visible SSE event; see
+  [Endpoints](#endpoints)) and is the only instance that actually runs
+  commands on it from then on.
 - Every instance still receives and displays that channel's `output` events
   (via fan-out), so any tab watching that channel's SSE stream sees the same
   output regardless of which instance it's connected to.
@@ -189,7 +191,12 @@ export interface WebReplAdapter {
 
 `message` is always a JSON string (already serialized by the library — your
 adapter just needs to move opaque strings around, not parse them). Three
-fixed topics are used: `webrepl:cmd`, `webrepl:out`, `webrepl:sys`.
+fixed topics are used: `webrepl:cmd`, `webrepl:out`, `webrepl:sys`. The
+`webrepl:sys` topic carries internal `claim`/`release` ownership-coordination
+messages between instances — these are never forwarded to SSE clients (they
+are distinct from, and not to be confused with, the client-visible `system`
+*SSE event type* documented under [Endpoints](#endpoints), which only ever
+carries `{ping}`/`{done}`/`{error}`).
 
 ### Redis adapter sketch
 
@@ -225,7 +232,8 @@ export class RedisWebReplAdapter implements WebReplAdapter, OnModuleDestroy {
 WebReplModule.forRoot({
   enabled: process.env.REPL_ENABLED === 'true',
   adapter: new RedisWebReplAdapter(),
-  instanceId: process.env.HOSTNAME, // shows up in `command`/`claim` events
+  instanceId: process.env.HOSTNAME, // shows up in `command` SSE events and
+                                     // internal webrepl:sys claim messages
 });
 ```
 
@@ -235,7 +243,7 @@ WebReplModule.forRoot({
 | ------------------- | ---------------- | --------------------------- | --------------------------------------------------- |
 | `enabled`           | `boolean`        | *(required)*                | When `false`, the module registers nothing at all.  |
 | `adapter`           | `WebReplAdapter` | `InMemoryWebReplAdapter`    | Provide for multi-instance coordination.            |
-| `instanceId`        | `string`         | random `inst_xxxxxxxx`      | Shown in `command`/`claim` system events.           |
+| `instanceId`        | `string`         | random `inst_xxxxxxxx`      | Shown in `command` SSE events and internal `webrepl:sys` claim/release messages. |
 | `sessionTtl`        | `number` (ms)    | `1_800_000` (30 min)        | Idle time before a channel's ownership is released. |
 | `replayBufferSize`  | `number`         | `200`                       | Events kept per channel for SSE `Last-Event-ID` replay. |
 | `heartbeatInterval` | `number` (ms)    | `15_000`                    | SSE `system` `{ ping: true }` interval.             |
@@ -264,10 +272,10 @@ and the types `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleAsyncOptio
   state, including the replay buffer.
 - **Ownership races are last-claim-wins.** If two instances receive the very
   first command for a brand-new channel at nearly the same time, both may
-  briefly believe they own it; whichever `claim` system message is processed
-  last by the group determines the actual owner going forward. This is a
-  narrow window (first command on a channel only) but is not fully resolved
-  by the protocol as implemented.
+  briefly believe they own it; whichever internal `claim` message (on the
+  `webrepl:sys` adapter topic) is processed last by the group determines the
+  actual owner going forward. This is a narrow window (first command on a
+  channel only) but is not fully resolved by the protocol as implemented.
 - **Relies on a deep import of `@nestjs/core` internals**
   (`@nestjs/core/nest-application-context`, `@nestjs/core/repl/repl-context`)
   to build an app-wide REPL context, since only the `repl()` bootstrap
