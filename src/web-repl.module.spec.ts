@@ -4,6 +4,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { WebReplModule } from './web-repl.module';
+import { WebReplService } from './web-repl.service';
 
 describe('WebReplModule', () => {
   it('registers nothing when disabled', async () => {
@@ -33,6 +34,26 @@ describe('WebReplModule', () => {
     await app.close();
   });
 
+  it('serves the UI and accepts a command when configured via forRootAsync', async () => {
+    const mod = await Test.createTestingModule({
+      imports: [
+        WebReplModule.forRootAsync({
+          useFactory: () => ({ enabled: true, instanceId: 'async-A' }),
+        }),
+      ],
+    }).compile();
+    const app: INestApplication = mod.createNestApplication();
+    await app.init();
+
+    const ui = await request(app.getHttpServer()).get('/repl/x/ui');
+    expect(ui.status).toBe(200);
+
+    const post = await request(app.getHttpServer()).post('/repl/x').send({ command: '1+1' });
+    expect(post.status).toBe(202);
+
+    await app.close();
+  });
+
   it('omits the controller when registerController is false', async () => {
     const mod = await Test.createTestingModule({
       imports: [WebReplModule.forRoot({ enabled: true, registerController: false })],
@@ -41,6 +62,23 @@ describe('WebReplModule', () => {
     await app.init();
     const res = await request(app.getHttpServer()).get('/repl/x/ui');
     expect(res.status).toBe(404);
+    await app.close();
+  });
+
+  // Test above only proves the *controller* is gone. registerController:false
+  // is meant for callers who mount their own controller in front of the
+  // same engine, so the engine itself -- WebReplService -- must still be
+  // registered and resolvable even with the default controller omitted.
+  it('still registers WebReplService (the engine) when registerController is false', async () => {
+    const mod = await Test.createTestingModule({
+      imports: [WebReplModule.forRoot({ enabled: true, registerController: false })],
+    }).compile();
+    const app = mod.createNestApplication();
+    await app.init();
+
+    expect(() => app.get(WebReplService)).not.toThrow();
+    expect(app.get(WebReplService)).toBeInstanceOf(WebReplService);
+
     await app.close();
   });
 
