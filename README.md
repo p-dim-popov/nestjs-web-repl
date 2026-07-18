@@ -35,7 +35,7 @@ import { WebReplModule } from 'nestjs-web-repl';
 
 @Module({
   imports: [
-    WebReplModule.forRoot({
+    WebReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
     }),
   ],
@@ -51,7 +51,7 @@ resolves from the whole DI container, not just the module that imports
 
 A runnable example lives in [`example/`](./example): `example/cat.service.ts`
 registers a trivial `CatService`, `example/app.module.ts` wires up
-`WebReplModule.forRoot(...)`, and `example/main.ts` boots it. Run it with:
+`WebReplModule.register(...)`, and `example/main.ts` boots it. Run it with:
 
 ```bash
 REPL_ENABLED=true PORT=3000 npx ts-node -T example/main.ts
@@ -118,7 +118,8 @@ curl -X POST http://localhost:3000/repl/dev \
 ## Securing it
 
 Because the module ships no auth, the supported way to lock this down is to
-disable the built-in controller and register your own subclass with guards:
+subclass the built-in controller, add your own guard, and pass it in via the
+`controller` extra:
 
 ```ts
 import { Controller, UseGuards } from '@nestjs/common';
@@ -127,31 +128,35 @@ import { AdminGuard } from './admin.guard';
 
 @Controller('internal/repl')
 @UseGuards(AdminGuard)
-export class SecureReplController extends WebReplController {}
+class SecureReplController extends WebReplController {}
 ```
 
 ```ts
 @Module({
   imports: [
-    WebReplModule.forRoot({
+    WebReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
-      registerController: false, // don't register the unguarded default controller
+      controller: SecureReplController, // replaces the unguarded default controller
     }),
   ],
-  controllers: [SecureReplController], // register yours instead
 })
 export class AppModule {}
 ```
 
-> **Note:** `registerController: false` only takes effect via the synchronous
-> `forRoot(...)`. `forRootAsync(...)` always registers the default,
-> **unguarded** `WebReplController`, because whether to declare a controller is
-> a static, module-definition-time decision in Nest, and `forRootAsync`'s
-> options aren't resolved until DI runs (after controllers are already fixed).
-> If you need async configuration (e.g. options from a `ConfigService`) *and*
-> a guarded controller, resolve your options synchronously up front (read env
-> vars / config directly) and call `forRoot(...)`, or put a guard in front of
-> the route at the HTTP-adapter/middleware level instead.
+`controller` is available to both `register` and `registerAsync` — it is a
+static, module-definition-time choice, so it's passed alongside `useFactory`/
+`inject` rather than resolved by it:
+
+```ts
+WebReplModule.registerAsync({
+  imports: [ConfigModule],
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    enabled: config.get('REPL_ENABLED') === 'true',
+  }),
+  controller: SecureReplController,
+});
+```
 
 ## Adapter / multi-instance
 
@@ -192,7 +197,9 @@ solves this with an **ownership + fan-out** protocol:
 By default this coordination happens via `InMemoryWebReplAdapter`, which only
 works within a single process (fine for local dev / single-instance
 deployments). For real multi-instance deployments, provide your own adapter
-that implements:
+via the `adapter` extra — a ready instance, `{ useClass, imports }`, or
+`{ useFactory, inject, imports }` (all DI-capable, so the adapter can itself
+depend on other providers) — that implements:
 
 ```ts
 export interface WebReplAdapter {
@@ -242,11 +249,28 @@ export class RedisWebReplAdapter implements WebReplAdapter, OnModuleDestroy {
 ```
 
 ```ts
-WebReplModule.forRoot({
+// as a ready-made instance
+WebReplModule.register({
   enabled: process.env.REPL_ENABLED === 'true',
   adapter: new RedisWebReplAdapter(),
   instanceId: process.env.HOSTNAME, // shows up in `command` SSE events and
                                      // internal webrepl:sys claim messages
+});
+
+// or let Nest construct it (and its dependencies) for you
+WebReplModule.register({
+  enabled: process.env.REPL_ENABLED === 'true',
+  adapter: { useClass: RedisWebReplAdapter, imports: [RedisModule] },
+});
+
+// or build it with a factory
+WebReplModule.register({
+  enabled: process.env.REPL_ENABLED === 'true',
+  adapter: {
+    useFactory: (redis: RedisService) => new RedisWebReplAdapter(redis),
+    inject: [RedisService],
+    imports: [RedisModule],
+  },
 });
 ```
 
@@ -254,25 +278,52 @@ WebReplModule.forRoot({
 
 | Option              | Type             | Default                    | Notes                                              |
 | ------------------- | ---------------- | --------------------------- | --------------------------------------------------- |
-| `enabled`           | `boolean`        | *(required)*                | When `false`, the module registers nothing at all.  |
-| `adapter`           | `WebReplAdapter` | `InMemoryWebReplAdapter`    | Provide for multi-instance coordination.            |
+| `enabled`           | `boolean`        | *(required)*                | When `false`, routes 404 and the module does not subscribe to the adapter. |
 | `instanceId`        | `string`         | random `inst_xxxxxxxx`      | Shown in `command` SSE events and internal `webrepl:sys` claim/release messages. |
 | `sessionTtl`        | `number` (ms)    | `1_800_000` (30 min)        | Idle time before a channel's ownership is released. |
 | `replayBufferSize`  | `number`         | `200`                       | Events kept per channel for SSE `Last-Event-ID` replay. |
 | `heartbeatInterval` | `number` (ms)    | `15_000`                    | SSE `system` `{ ping: true }` interval.             |
 | `ownerHeartbeatInterval` | `number` (ms) | `10_000`                | How often an instance re-announces `claim` for each channel it owns, keeping its ownership lease alive. |
 | `ownerLeaseTtl`     | `number` (ms)    | `30_000`                    | How long an ownership record is trusted since the last claim/heartbeat, before a stale owner's channel may be taken over. Enforced minimum `ownerHeartbeatInterval * 2` (a live owner always keeps a full heartbeat interval of slack against delivery jitter); if the configured value is below that, it's clamped up to `ownerHeartbeatInterval * 2` and a warning is logged (never throws). |
-| `registerController`| `boolean`        | `true`                      | Set `false` to omit the default controller (see [Securing it](#securing-it)). `forRoot` only. |
 
-`WebReplModule.forRootAsync({ useFactory, inject, imports })` is also available
-for options that need DI (e.g. reading a `ConfigService`); see the
-`registerController` caveat above.
+`register`/`registerAsync` also accept two "extras", passed alongside the
+options above (or alongside `useFactory`/`inject`/`imports` for the async
+form) rather than through them, since both are static, module-definition-time
+choices:
+
+| Extra        | Type                  | Default              | Notes                                              |
+| ------------ | --------------------- | --------------------- | --------------------------------------------------- |
+| `controller` | `Type<WebReplController>` | built-in `WebReplController` | Bring your own controller (subclass + guards). See [Securing it](#securing-it). |
+| `adapter`    | `WebReplAdapter \| Type<WebReplAdapter> \| { useClass, imports? } \| { useFactory, inject?, imports? }` | `InMemoryWebReplAdapter` | Multi-instance coordination. See [Adapter / multi-instance](#adapter--multi-instance). |
+
+`WebReplModule.registerAsync({ useFactory, inject, imports, controller?, adapter? })`
+is also available for options that need DI (e.g. reading a `ConfigService`).
 
 ## Exports
 
 `WebReplModule`, `WebReplController`, `WebReplService`, `InMemoryWebReplAdapter`,
 and the types `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleAsyncOptions`,
 `WebReplEvent`, `SseEventType`.
+
+## Migrating from 1.x → 2.0
+
+- `WebReplModule.forRoot(...)` → `WebReplModule.register(...)`.
+- `WebReplModule.forRootAsync(...)` → `WebReplModule.registerAsync(...)`.
+- `adapter` is no longer an option resolved by `useFactory`; it's a static
+  "extra" passed alongside the options (or alongside `useFactory`/`inject` for
+  the async form), and now also accepts `{ useClass, imports? }` or
+  `{ useFactory, inject?, imports? }` in addition to a ready instance — see
+  [Adapter / multi-instance](#adapter--multi-instance).
+- `registerController: false` is gone. To run your own guarded controller
+  instead of the default, subclass `WebReplController`, add `@UseGuards(...)`,
+  and pass it as the `controller` extra to `register`/`registerAsync` — see
+  [Securing it](#securing-it). Unlike the old `registerController` flag, this
+  works identically for both the sync and async form.
+- A disabled module (`enabled: false`) now still registers the
+  controller/service, but every route 404s and the module never subscribes to
+  the adapter — it no longer silently registers nothing. If you were relying
+  on a disabled module contributing zero routes/providers to the Nest module
+  graph, that is no longer the case.
 
 ## AI skill
 
@@ -344,8 +395,9 @@ code, here is what to actually look at:
 - **The commit history.** The real TDD trail is preserved — failing test,
   implementation, fixes — including several rounds where review caught genuine
   defects (the trickiest: `node:repl` completion detection on modern Node, and
-  a runtime-vs-registration security bug where `forRootAsync` could have
-  shipped the arbitrary-code endpoint live with `enabled: false`).
+  a runtime-vs-registration security bug where an earlier async-registration
+  API could have shipped the arbitrary-code endpoint live with
+  `enabled: false`; `registerAsync` now enforces `enabled` at runtime instead).
 - **The security invariants** are documented in [`AGENTS.md`](./AGENTS.md) and
   enforced by tests, not left as prose.
 

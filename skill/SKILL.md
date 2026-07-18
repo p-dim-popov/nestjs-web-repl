@@ -41,7 +41,7 @@ import { WebReplModule } from 'nestjs-web-repl';
 
 @Module({
   imports: [
-    WebReplModule.forRoot({
+    WebReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
     }),
   ],
@@ -52,7 +52,7 @@ export class AppModule {}
 Config-driven `enabled` (async form):
 
 ```ts
-WebReplModule.forRootAsync({
+WebReplModule.registerAsync({
   imports: [ConfigModule],
   inject: [ConfigService],
   useFactory: (config: ConfigService) => ({
@@ -85,12 +85,17 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
 
 ## When you need more
 
+- **Authentication:** subclass `WebReplController`, decorate it with
+  `@UseGuards(...)`, and pass it as `controller:` to `register`/`registerAsync`.
+  See "Securing it" in the package README.
 - **Multiple app instances** (load-balanced replicas): the default in-memory
-  adapter is per-process; supply a shared adapter so a command and its output
-  reach the owning instance. See "Adapter / multi-instance" in the package
-  README.
+  adapter is per-process; supply a shared adapter via the `adapter` extra
+  (a ready instance, `{ useClass, imports }`, or `{ useFactory, inject, imports }`)
+  so a command and its output reach the owning instance. See "Adapter /
+  multi-instance" in the package README.
 - **Custom adapter:** implement the adapter interface (publish/subscribe over
-  the message topics). See "Adapter / multi-instance" in the README.
+  the message topics) and pass it via the `adapter` extra. See "Adapter /
+  multi-instance" in the README.
 - **Options** (base path, TTLs, heartbeats) and **exported symbols:** see
   "Options" and "Exports" in the README.
 - **Runnable example gotcha:** run examples with `ts-node`, not `tsx` —

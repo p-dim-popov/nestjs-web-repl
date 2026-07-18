@@ -4,7 +4,7 @@ import { CatService } from './cat.service';
 
 @Module({
   imports: [
-    WebReplModule.forRoot({
+    WebReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
       instanceId: process.env.INSTANCE_ID,
     }),

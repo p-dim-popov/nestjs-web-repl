@@ -65,11 +65,10 @@ describe('WebReplController', () => {
     expect(html).not.toContain('</script><script>alert(1)'); // not present unescaped in the script context
   });
 
-  // CRITICAL 1: forRootAsync always registers this controller regardless of
-  // the resolved `enabled` value, so the controller itself must re-check
-  // `enabled` on every route and 404 -- matching the sync forRoot(enabled:
-  // false) path's "nothing registered -> 404" behavior -- rather than
-  // trusting that a disabled module was never wired up.
+  // CRITICAL 1: register()/registerAsync() always register this controller
+  // regardless of the resolved `enabled` value, so the controller itself
+  // must re-check `enabled` on every route and 404 -- rather than trusting
+  // that a disabled module was never wired up.
   describe('when the resolved options are disabled', () => {
     let disabledApp: INestApplication;
     const disabledSvc = {
