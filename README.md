@@ -172,6 +172,19 @@ solves this with an **ownership + fan-out** protocol:
 - A channel's ownership is released after `sessionTtl` (default 30 minutes)
   of inactivity, freeing it to be re-claimed by whichever instance next
   receives a command for it.
+- Ownership is also a **lease**: the owning instance re-announces `claim`
+  for every channel it owns every `ownerHeartbeatInterval` (default 10s). If
+  no claim/heartbeat has been seen for a channel's owner in `ownerLeaseTtl`
+  (default 30s) — because that instance crashed or was killed without a
+  clean shutdown — the channel is treated as effectively ownerless, and the
+  origin instance of the next command for it takes over. `ownerLeaseTtl` is
+  enforced to be at least `ownerHeartbeatInterval * 2` (clamped up with a
+  warning otherwise), so a live owner always has a full heartbeat interval
+  of slack against publish/delivery jitter — a live, heartbeating owner is
+  never preempted this way. Takeover loses that channel's in-memory
+  variables (the dead owner's session is gone) but restores availability
+  instead of leaving the channel wedged fleet-wide (see
+  [Limitations](#limitations-v1)).
 - Because ownership is decided by whichever instance's `onCmd` handler runs
   first, two instances racing to claim the same brand-new channel at the
   same instant resolve **last-claim-wins** (see [Limitations](#limitations-v1)).
@@ -247,6 +260,8 @@ WebReplModule.forRoot({
 | `sessionTtl`        | `number` (ms)    | `1_800_000` (30 min)        | Idle time before a channel's ownership is released. |
 | `replayBufferSize`  | `number`         | `200`                       | Events kept per channel for SSE `Last-Event-ID` replay. |
 | `heartbeatInterval` | `number` (ms)    | `15_000`                    | SSE `system` `{ ping: true }` interval.             |
+| `ownerHeartbeatInterval` | `number` (ms) | `10_000`                | How often an instance re-announces `claim` for each channel it owns, keeping its ownership lease alive. |
+| `ownerLeaseTtl`     | `number` (ms)    | `30_000`                    | How long an ownership record is trusted since the last claim/heartbeat, before a stale owner's channel may be taken over. Enforced minimum `ownerHeartbeatInterval * 2` (a live owner always keeps a full heartbeat interval of slack against delivery jitter); if the configured value is below that, it's clamped up to `ownerHeartbeatInterval * 2` and a warning is logged (never throws). |
 | `registerController`| `boolean`        | `true`                      | Set `false` to omit the default controller (see [Securing it](#securing-it)). `forRoot` only. |
 
 `WebReplModule.forRootAsync({ useFactory, inject, imports })` is also available
@@ -276,15 +291,18 @@ and the types `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleAsyncOptio
   `webrepl:sys` adapter topic) is processed last by the group determines the
   actual owner going forward. This is a narrow window (first command on a
   channel only) but is not fully resolved by the protocol as implemented.
-- **A crashed/restarted owner wedges its channels fleet-wide.** Ownership is
-  only released by an explicit `release` message on the `webrepl:sys` topic
-  (sent on TTL expiry). If the instance that owns a channel crashes or is
-  restarted instead of shutting down cleanly, no `release` is ever
-  published, so surviving instances still record it as the owner and
-  silently ignore any new commands for that channel — the channel is dead
-  fleet-wide until the owning instance (or an instance that reclaims the
-  same identity) comes back. This is a known v1 multi-instance limitation,
-  alongside last-claim-wins above.
+- **A crashed/restarted owner's channel is taken over, not wedged forever,
+  but loses its in-memory variables.** Ownership is a lease (see
+  "Multi-instance ownership" above): a live owner keeps it alive with
+  `claim` heartbeats every `ownerHeartbeatInterval`. If the instance that
+  owns a channel crashes or is restarted instead of shutting down cleanly,
+  it stops heartbeating, and after `ownerLeaseTtl` the origin instance of
+  the next command for that channel takes over — starting a fresh session.
+  Any variables declared in the dead owner's session are gone; the channel
+  itself becomes usable again rather than being wedged fleet-wide. This is
+  strictly better than a permanent wedge, but it is still a data loss on
+  unclean owner death, and (like last-claim-wins above) a narrow multi-
+  instance edge case worth knowing about.
 - **Relies on a deep import of `@nestjs/core` internals**
   (`@nestjs/core/nest-application-context`, `@nestjs/core/repl/repl-context`)
   to build an app-wide REPL context, since only the `repl()` bootstrap
@@ -304,7 +322,7 @@ We tell you this because the honest thing to do is let you judge the code on
 its merits rather than guess at its origins. If you are skeptical of AI-written
 code, here is what to actually look at:
 
-- **The tests.** 57 automated tests, including a two-instance end-to-end test
+- **The tests.** 62 automated tests, including a two-instance end-to-end test
   that proves cross-instance command routing and output fan-out, and an
   execution-proof test that resolves a real provider through the live REPL
   context. `npm test`, `npm run build`, and `npx tsc --noEmit` are all green.

@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Observable, Subject, defer, merge, from, interval } from 'rxjs';
 import { finalize, map } from 'rxjs/operators';
-import { WEB_REPL_ADAPTER, WEB_REPL_OPTIONS, TOPICS, DEFAULTS } from './constants';
+import { WEB_REPL_ADAPTER, WEB_REPL_OPTIONS, WEB_REPL_CLOCK, TOPICS, DEFAULTS } from './constants';
 import type { WebReplAdapter } from './interfaces/web-repl-adapter.interface';
 import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
 import type {
@@ -58,6 +58,13 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
   private readonly heartbeatInterval: number;
   private readonly enabled: boolean;
   private readonly ownership = new Map<string, string>();
+  // Tracks, per channel, the clock() timestamp of the last claim/heartbeat
+  // seen for its current owner -- the ownership *lease*. See onCmd's
+  // staleness check and heartbeatOwnedChannels().
+  private readonly ownerSeenAt = new Map<string, number>();
+  private readonly ownerHeartbeatInterval: number;
+  private readonly ownerLeaseTtl: number;
+  private ownerHeartbeatTimer?: NodeJS.Timeout;
   private readonly channels = new Map<string, ChannelState>();
   private counter = 0;
 
@@ -65,12 +72,39 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     @Inject(WEB_REPL_OPTIONS) private readonly options: WebReplModuleOptions,
     @Inject(WEB_REPL_ADAPTER) private readonly adapter: WebReplAdapter,
     @Inject('WEB_REPL_CONTEXT_FACTORY') private readonly buildContext: ContextFactory,
+    @Inject(WEB_REPL_CLOCK) private readonly clock: () => number = () => Date.now(),
   ) {
     this.instanceId = options.instanceId ?? `inst_${Math.random().toString(36).slice(2, 10)}`;
     this.sessionTtl = options.sessionTtl ?? DEFAULTS.sessionTtl;
     this.replayBufferSize = options.replayBufferSize ?? DEFAULTS.replayBufferSize;
     this.heartbeatInterval = options.heartbeatInterval ?? DEFAULTS.heartbeatInterval;
     this.enabled = options.enabled;
+
+    this.ownerHeartbeatInterval = options.ownerHeartbeatInterval ?? DEFAULTS.ownerHeartbeatInterval;
+    const requestedLeaseTtl = options.ownerLeaseTtl ?? DEFAULTS.ownerLeaseTtl;
+    // Enforce a MARGIN, not just strict inequality: a lease only one tick
+    // above the heartbeat interval leaves zero slack for publish/adapter
+    // delivery jitter (measured on a PEER's clock) -- a single heartbeat
+    // delivered even slightly late could make a live owner look stale to
+    // someone else, causing exactly the preemption/split-session/lost-vars
+    // failure this feature exists to prevent. Requiring the lease to be at
+    // least 2x the heartbeat interval guarantees a live owner always has at
+    // least one full heartbeat interval of slack against jitter before it
+    // could ever appear stale to a peer.
+    const minLeaseTtl = this.ownerHeartbeatInterval * 2;
+    if (requestedLeaseTtl < minLeaseTtl) {
+      // Clamp rather than throw: this is a debugging tool, it shouldn't fail
+      // boot over a misconfigured pair of durations.
+      this.ownerLeaseTtl = minLeaseTtl;
+      this.logger.warn(
+        `ownerLeaseTtl (${requestedLeaseTtl}ms) must be at least 2x ` +
+          `ownerHeartbeatInterval (${this.ownerHeartbeatInterval}ms) so a live owner ` +
+          `always has a full heartbeat interval of slack against delivery jitter; ` +
+          `clamping the effective lease to ${this.ownerLeaseTtl}ms`,
+      );
+    } else {
+      this.ownerLeaseTtl = requestedLeaseTtl;
+    }
   }
 
   async onModuleInit(): Promise<void> {
@@ -84,9 +118,22 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     await this.adapter.subscribe(TOPICS.cmd, (m) => this.onCmd(this.parse<CmdMessage>(m)));
     await this.adapter.subscribe(TOPICS.out, (m) => this.onOut(this.parse<OutMessage>(m)));
     await this.adapter.subscribe(TOPICS.sys, (m) => this.onSys(this.parse<SysMessage>(m)));
+
+    // Owner-liveness safety net: a live owner must keep renewing its lease
+    // on every channel it owns, or another instance may treat that channel
+    // as effectively ownerless once the lease expires (see onCmd). Only
+    // started when enabled, mirroring the runtime `enabled` enforcement
+    // above -- a disabled instance must never touch the adapter, including
+    // via this timer.
+    this.ownerHeartbeatTimer = setInterval(
+      () => this.heartbeatOwnedChannels(),
+      this.ownerHeartbeatInterval,
+    );
+    this.ownerHeartbeatTimer.unref?.();
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.ownerHeartbeatTimer) clearInterval(this.ownerHeartbeatTimer);
     for (const state of this.channels.values()) {
       if (state.ttlTimer) clearTimeout(state.ttlTimer);
       state.session?.close();
@@ -94,6 +141,24 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     }
     this.channels.clear();
     await this.adapter.onModuleDestroy?.();
+  }
+
+  // Re-announces `claim` for every channel this instance currently owns and
+  // still has a live session for -- i.e. is actually still running. This is
+  // the heartbeat that keeps a live owner's lease from ever going stale
+  // (see onCmd's leaseExpired check). A channel this instance owns per the
+  // `ownership` map but no longer has a session for (e.g. torn down by a TTL
+  // release already in flight) is intentionally NOT re-claimed here.
+  private heartbeatOwnedChannels(): void {
+    for (const [channel, state] of this.channels) {
+      if (this.ownership.get(channel) !== this.instanceId) continue;
+      if (!state.session) continue;
+      void this.safePublish(TOPICS.sys, {
+        channel,
+        kind: 'claim',
+        instanceId: this.instanceId,
+      } satisfies SysMessage);
+    }
   }
 
   async dispatch(channel: string, command: string): Promise<{ commandId: string }> {
@@ -130,9 +195,26 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
   private async onCmd(msg: CmdMessage): Promise<void> {
     const owner = this.ownership.get(msg.channel);
     const iAmOwner = owner === this.instanceId;
-    const noOwner = owner === undefined;
 
-    if (!iAmOwner && !(noOwner && msg.originInstanceId === this.instanceId)) return;
+    // Lease staleness: an owned channel is only trusted for
+    // `ownerLeaseTtl` since the last claim/heartbeat seen for it. A LIVE
+    // owner heartbeats itself well within that window (ownerHeartbeatInterval
+    // < ownerLeaseTtl is enforced in the constructor), so this never fires
+    // for a healthy owner -- only for one that has stopped heartbeating
+    // (crashed / killed without a clean shutdown).
+    const seenAt = this.ownerSeenAt.get(msg.channel) ?? 0;
+    const leaseExpired = owner !== undefined && this.clock() - seenAt > this.ownerLeaseTtl;
+    // A channel whose lease expired under a DIFFERENT instance is treated
+    // as ownerless for claiming purposes -- but never for the instance that
+    // still (per its own map) believes it owns it; that instance keeps
+    // executing via the `iAmOwner` branch below regardless of this flag.
+    const effectivelyOwnerless = owner === undefined || (leaseExpired && owner !== this.instanceId);
+    const isOrigin = msg.originInstanceId === this.instanceId;
+
+    // Only the ORIGIN instance may claim an effectively-ownerless channel --
+    // whether it's brand new or a stale takeover -- so every other instance
+    // doesn't stampede the same claim.
+    if (!iAmOwner && !(effectivelyOwnerless && isOrigin)) return;
 
     // Resolve (or create) the channel state and mark a command as pending
     // SYNCHRONOUSLY here, before any `await` below -- i.e. within the same
@@ -150,8 +232,15 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     const state = this.getChannel(msg.channel);
     state.pending++;
 
-    if (noOwner) {
+    if (!iAmOwner) {
+      // effectivelyOwnerless && isOrigin: either a brand-new channel, or a
+      // takeover of a channel whose previous owner's lease went stale. On
+      // takeover, the dead owner's in-memory session (and its variables) is
+      // gone -- this instance starts a fresh session. That's an accepted,
+      // documented trade-off: the channel becomes usable again instead of
+      // being wedged fleet-wide forever.
       this.ownership.set(msg.channel, this.instanceId);
+      this.ownerSeenAt.set(msg.channel, this.clock());
       await this.safePublish(TOPICS.sys, {
         channel: msg.channel,
         kind: 'claim',
@@ -267,8 +356,10 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
   private onSys(msg: SysMessage): void {
     if (msg.kind === 'claim') {
       this.ownership.set(msg.channel, msg.instanceId);
+      this.ownerSeenAt.set(msg.channel, this.clock());
     } else {
       this.ownership.delete(msg.channel);
+      this.ownerSeenAt.delete(msg.channel);
       const state = this.channels.get(msg.channel);
       if (state?.session) {
         state.session.close();
@@ -302,6 +393,25 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     if (state.session) return;
     if (!state.buffer.isEmpty()) return;
     this.channels.delete(channel);
+    // Mirror the channel GC: a channel this instance no longer tracks state
+    // for shouldn't keep a stale ownerSeenAt entry lying around (e.g. a
+    // non-owner instance that watched a channel via SSE, saw a remote
+    // claim/heartbeat for it, then had its own local ChannelState evicted).
+    this.ownerSeenAt.delete(channel);
+    // Deliberately NOT deleting `ownership` here (unlike the onSys release
+    // branch, which deletes both): `ownership` is cluster-wide state --
+    // every instance's map should agree on who owns a channel, and that
+    // agreement is only supposed to change via an explicit claim/release
+    // message, not as a side effect of one instance's local eviction
+    // bookkeeping. `ownerSeenAt`, by contrast, is purely local staleness
+    // tracking for this instance's own onCmd checks, so it's fine (and
+    // necessary, to avoid leaking) to drop it here. In practice this
+    // instance only ever reaches eviction-eligibility (no session, empty
+    // buffer) for a channel it owns if execution never produced any
+    // buffered output at all, which -- given emit() always buffers at least
+    // an error/done system event before pending drops to 0 -- shouldn't
+    // happen while genuinely owned; if a future refactor changes that
+    // invariant, reconsider this asymmetry.
   }
 
   private touchTtl(channel: string, state: ChannelState): void {
