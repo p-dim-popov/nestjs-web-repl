@@ -383,10 +383,11 @@ We tell you this because the honest thing to do is let you judge the code on
 its merits rather than guess at its origins. If you are skeptical of AI-written
 code, here is what to actually look at:
 
-- **The tests.** 99 automated tests, including a two-instance end-to-end test
+- **The tests.** 100 automated tests, including a two-instance end-to-end test
   that proves cross-instance command routing and output fan-out, and an
   execution-proof test that resolves a real provider through the live REPL
-  context. `npm test`, `npm run build`, and `npx tsc --noEmit` are all green.
+  context. `npm test`, `npm run build`, and `npx tsc -p tsconfig.build.json
+  --noEmit` are all green.
 - **The commit history.** The real TDD trail is preserved — failing test,
   implementation, fixes — including several rounds where review caught genuine
   defects (the trickiest: `node:repl` completion detection on modern Node, and
