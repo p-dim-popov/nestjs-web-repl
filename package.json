@@ -1,6 +1,6 @@
 {
   "name": "nestjs-web-repl",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Expose a live NestJS REPL over the network (HTTP + SSE + Monaco UI).",
   "license": "MIT",
   "main": "dist/index.js",
