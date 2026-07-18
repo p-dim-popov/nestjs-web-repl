@@ -388,7 +388,7 @@ We tell you this because the honest thing to do is let you judge the code on
 its merits rather than guess at its origins. If you are skeptical of AI-written
 code, here is what to actually look at:
 
-- **The tests.** 62 automated tests, including a two-instance end-to-end test
+- **The tests.** 83 automated tests, including a two-instance end-to-end test
   that proves cross-instance command routing and output fan-out, and an
   execution-proof test that resolves a real provider through the live REPL
   context. `npm test`, `npm run build`, and `npx tsc --noEmit` are all green.
