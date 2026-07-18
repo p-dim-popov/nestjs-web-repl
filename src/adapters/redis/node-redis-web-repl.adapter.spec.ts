@@ -32,4 +32,19 @@ describe('NodeRedisWebReplAdapter', () => {
     expect(received).toEqual([]);
     await expect(pubB.publish('webrepl:out', 'x')).resolves.toBe(0);
   });
+
+  it('creates and connects the subscriber exactly once across multiple topic subscriptions', async () => {
+    const bus = new FakeRedisBus();
+    const pub = new FakeNodeRedis(bus);
+    const b = new NodeRedisWebReplAdapter(pub);
+    await Promise.all([
+      b.subscribe('webrepl:cmd', () => {}),
+      b.subscribe('webrepl:out', () => {}),
+      b.subscribe('webrepl:sys', () => {}),
+    ]);
+    // One duplicated subscriber connection, connected exactly once — the
+    // memoized `connecting` promise must dedupe concurrent subscribes.
+    expect(pub.duplicates).toHaveLength(1);
+    expect(pub.duplicates[0].connectCount).toBe(1);
+  });
 });

@@ -31,6 +31,8 @@ export class FakeRedisBus {
 export class FakeNodeRedis implements NodeRedisLike {
   connected = false;
   quitCalled = false;
+  connectCount = 0;
+  readonly duplicates: FakeNodeRedis[] = [];
   private readonly own: Array<[string, Listener]> = [];
 
   constructor(private readonly bus: FakeRedisBus) {}
@@ -46,10 +48,13 @@ export class FakeNodeRedis implements NodeRedisLike {
   }
 
   duplicate(): FakeNodeRedis {
-    return new FakeNodeRedis(this.bus);
+    const child = new FakeNodeRedis(this.bus);
+    this.duplicates.push(child);
+    return child;
   }
 
   async connect(): Promise<void> {
+    this.connectCount++;
     this.connected = true;
   }
 
