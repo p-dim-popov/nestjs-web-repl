@@ -217,6 +217,53 @@ are distinct from, and not to be confused with, the client-visible `system`
 *SSE event type* documented under [Endpoints](#endpoints), which only ever
 carries `{ping}`/`{done}`/`{error}`).
 
+### Redis (multi-instance)
+
+Behind a load balancer the default in-memory adapter is per-process: a command
+posted to one replica never reaches a session owned by another. Supply a Redis
+adapter so every replica shares one pub/sub bus. Import it from the
+`nestjs-web-repl/redis` subpath and hand it one connected client — the adapter
+creates its own dedicated subscriber connection (Redis requires one for subscribe
+mode) and closes only that connection on shutdown; your client stays yours.
+
+**ioredis:**
+
+```ts
+import Redis from 'ioredis';
+import { WebReplModule } from 'nestjs-web-repl';
+import { IoRedisWebReplAdapter } from 'nestjs-web-repl/redis';
+
+WebReplModule.register(
+  { enabled: process.env.REPL_ENABLED === 'true' },
+  { adapter: { useFactory: () => new IoRedisWebReplAdapter(new Redis(process.env.REDIS_URL!)) } },
+);
+```
+
+**node-redis:**
+
+```ts
+import { createClient } from 'redis';
+import { WebReplModule } from 'nestjs-web-repl';
+import { NodeRedisWebReplAdapter } from 'nestjs-web-repl/redis';
+
+WebReplModule.register(
+  { enabled: process.env.REPL_ENABLED === 'true' },
+  {
+    adapter: {
+      useFactory: async () => {
+        const client = createClient({ url: process.env.REDIS_URL });
+        await client.connect();
+        return new NodeRedisWebReplAdapter(client);
+      },
+    },
+  },
+);
+```
+
+`ioredis` and `redis` are optional peer dependencies — install whichever you use.
+Both adapters wrap a small shared base; to target another broker, subclass
+`BaseRedisWebReplAdapter` or implement `WebReplAdapter` directly.
+
 ### Redis adapter sketch
 
 ```ts
@@ -389,7 +436,7 @@ We tell you this because the honest thing to do is let you judge the code on
 its merits rather than guess at its origins. If you are skeptical of AI-written
 code, here is what to actually look at:
 
-- **The tests.** 83 automated tests, including a two-instance end-to-end test
+- **The tests.** 99 automated tests, including a two-instance end-to-end test
   that proves cross-instance command routing and output fan-out, and an
   execution-proof test that resolves a real provider through the live REPL
   context. `npm test`, `npm run build`, and `npx tsc --noEmit` are all green.
