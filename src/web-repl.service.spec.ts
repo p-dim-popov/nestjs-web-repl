@@ -506,7 +506,6 @@ describe('WebReplService', () => {
       const options: WebReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
-        adapter,
         ownerHeartbeatInterval: 10_000,
         // Deliberately only *slightly* above the heartbeat (the reviewer's
         // reproduction: a "legal" tight config like heartbeat + 1 leaves
@@ -538,7 +537,6 @@ describe('WebReplService', () => {
       const options: WebReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
-        adapter,
         ownerHeartbeatInterval: 10_000,
         ownerLeaseTtl: 5_000, // <= heartbeat -- must be clamped, not thrown
       };
@@ -558,7 +556,6 @@ describe('WebReplService', () => {
       const options: WebReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
-        adapter,
         ownerHeartbeatInterval: 10_000,
         ownerLeaseTtl: 25_000, // > 10_000 * 2 -- must be respected as-is
       };
@@ -581,7 +578,6 @@ describe('WebReplService', () => {
         const options: WebReplModuleOptions = {
           enabled: true,
           instanceId: 'A',
-          adapter,
           ownerHeartbeatInterval: 5_000,
           ownerLeaseTtl: 20_000,
         };
