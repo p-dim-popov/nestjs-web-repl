@@ -233,10 +233,10 @@ import Redis from 'ioredis';
 import { WebReplModule } from 'nestjs-web-repl';
 import { IoRedisWebReplAdapter } from 'nestjs-web-repl/redis';
 
-WebReplModule.register(
-  { enabled: process.env.REPL_ENABLED === 'true' },
-  { adapter: { useFactory: () => new IoRedisWebReplAdapter(new Redis(process.env.REDIS_URL!)) } },
-);
+WebReplModule.register({
+  enabled: process.env.REPL_ENABLED === 'true',
+  adapter: new IoRedisWebReplAdapter(new Redis(process.env.REDIS_URL!)),
+});
 ```
 
 **node-redis:**
@@ -246,79 +246,26 @@ import { createClient } from 'redis';
 import { WebReplModule } from 'nestjs-web-repl';
 import { NodeRedisWebReplAdapter } from 'nestjs-web-repl/redis';
 
-WebReplModule.register(
-  { enabled: process.env.REPL_ENABLED === 'true' },
-  {
-    adapter: {
-      useFactory: async () => {
-        const client = createClient({ url: process.env.REDIS_URL });
-        await client.connect();
-        return new NodeRedisWebReplAdapter(client);
-      },
+WebReplModule.register({
+  enabled: process.env.REPL_ENABLED === 'true',
+  adapter: {
+    useFactory: async () => {
+      const client = createClient({ url: process.env.REDIS_URL });
+      await client.connect();
+      return new NodeRedisWebReplAdapter(client);
     },
   },
-);
+});
 ```
 
 `ioredis` and `redis` are optional peer dependencies — install whichever you use.
 Both adapters wrap a small shared base; to target another broker, subclass
 `BaseRedisWebReplAdapter` or implement `WebReplAdapter` directly.
 
-### Redis adapter sketch
-
-```ts
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import Redis from 'ioredis';
-import type { WebReplAdapter } from 'nestjs-web-repl';
-
-@Injectable()
-export class RedisWebReplAdapter implements WebReplAdapter, OnModuleDestroy {
-  private readonly pub = new Redis(process.env.REDIS_URL);
-  private readonly sub = new Redis(process.env.REDIS_URL);
-
-  async publish(topic: string, message: string): Promise<void> {
-    await this.pub.publish(topic, message);
-  }
-
-  async subscribe(topic: string, handler: (message: string) => void): Promise<void> {
-    await this.sub.subscribe(topic);
-    this.sub.on('message', (channel, message) => {
-      if (channel === topic) handler(message);
-    });
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.pub.quit();
-    await this.sub.quit();
-  }
-}
-```
-
-```ts
-// as a ready-made instance
-WebReplModule.register({
-  enabled: process.env.REPL_ENABLED === 'true',
-  adapter: new RedisWebReplAdapter(),
-  instanceId: process.env.HOSTNAME, // shows up in `command` SSE events and
-                                     // internal webrepl:sys claim messages
-});
-
-// or let Nest construct it (and its dependencies) for you
-WebReplModule.register({
-  enabled: process.env.REPL_ENABLED === 'true',
-  adapter: { useClass: RedisWebReplAdapter, imports: [RedisModule] },
-});
-
-// or build it with a factory
-WebReplModule.register({
-  enabled: process.env.REPL_ENABLED === 'true',
-  adapter: {
-    useFactory: (redis: RedisService) => new RedisWebReplAdapter(redis),
-    inject: [RedisService],
-    imports: [RedisModule],
-  },
-});
-```
+The `adapter` extra also accepts a DI-configured provider — `{ useClass, imports? }`
+or `{ useFactory, inject?, imports? }` — so a custom adapter can pull its own
+dependencies (a shared client, a config service) from a Nest module. See the
+[extras table](#options-webreplmoduleoptions) below.
 
 ## Options (`WebReplModuleOptions`)
 

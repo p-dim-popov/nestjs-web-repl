@@ -91,8 +91,9 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
 - **Multiple app instances** (load-balanced replicas): the default in-memory
   adapter is per-process. For Redis, import a ready-made adapter from the
   `nestjs-web-repl/redis` subpath — `IoRedisWebReplAdapter` (ioredis) or
-  `NodeRedisWebReplAdapter` (node-redis) — and pass it via the `adapter` extra:
-  `{ adapter: { useFactory: () => new IoRedisWebReplAdapter(client) } }`. Hand it
+  `NodeRedisWebReplAdapter` (node-redis) — and pass it as the `adapter` extra in
+  the same `register` call:
+  `register({ enabled, adapter: new IoRedisWebReplAdapter(client) })`. Hand it
   one connected client; it owns its own subscriber connection. For any other
   broker, supply a custom adapter (a ready instance, `{ useClass, imports }`, or
   `{ useFactory, inject, imports }`). See "Adapter / multi-instance" in the README.
