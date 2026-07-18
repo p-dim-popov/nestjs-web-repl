@@ -60,11 +60,9 @@ export class WebReplController {
     @Param('channel') channel: string,
     @Body() body: { command?: unknown },
   ): Promise<{ accepted: true; commandId: string }> {
-    // CRITICAL: forRootAsync always registers this controller regardless
-    // of the resolved `enabled` value (providers/controllers must be
-    // declared statically before useFactory ever runs). Re-check at
-    // request time so a disabled async module 404s on every route, just
-    // like the sync forRoot(enabled: false) path that registers nothing.
+    // CRITICAL: register/registerAsync always register this controller;
+    // `enabled` is enforced at runtime so a disabled module 404s on every
+    // route.
     if (!this.options.enabled) throw new NotFoundException();
     if (typeof body?.command !== 'string' || body.command.trim().length === 0) {
       throw new BadRequestException('command must be a non-empty string');

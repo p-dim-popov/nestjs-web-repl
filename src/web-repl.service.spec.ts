@@ -203,7 +203,7 @@ describe('WebReplService', () => {
   });
 
   // --- CRITICAL 1: `enabled` must be enforced at runtime, not just at
-  // module-registration time, so a forRootAsync-resolved `enabled: false`
+  // module-registration time, so a registerAsync-resolved `enabled: false`
   // can't ship a live execution endpoint. ---
   describe('when disabled at runtime', () => {
     const makeDisabledService = (adapter: InMemoryWebReplAdapter) => {

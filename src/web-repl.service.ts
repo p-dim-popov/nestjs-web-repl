@@ -108,12 +108,12 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    // CRITICAL: `enabled` is the product's only safety rail. forRoot()
-    // already refuses to register anything when disabled, but
-    // forRootAsync() resolves options at DI time and always registers this
-    // service/controller -- so this runtime check is what keeps a
-    // config-driven `enabled: false` (e.g. from forRootAsync) from
-    // silently subscribing to the command bus and executing arbitrary code.
+    // CRITICAL: `enabled` is the product's only safety rail. Both
+    // register() and registerAsync() always register this
+    // service/controller (providers/controllers must be declared
+    // statically) -- so this runtime check is what keeps a config-driven
+    // `enabled: false` (e.g. from registerAsync) from silently subscribing
+    // to the command bus and executing arbitrary code.
     if (!this.enabled) return;
     await this.adapter.subscribe(TOPICS.cmd, (m) => this.onCmd(this.parse<CmdMessage>(m)));
     await this.adapter.subscribe(TOPICS.out, (m) => this.onOut(this.parse<OutMessage>(m)));
