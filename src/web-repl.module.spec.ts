@@ -103,6 +103,13 @@ describe('WebReplModule (register / registerAsync)', () => {
     await app.close();
   });
 
+  it('throws on a malformed adapter config', () => {
+    expect(() =>
+      // @ts-expect-error — deliberately malformed to prove the runtime guard
+      WebReplModule.register({ enabled: true, adapter: { usClass: InMemoryWebReplAdapter } }),
+    ).toThrow(/invalid adapter/i);
+  });
+
   it('builds the adapter via useFactory', async () => {
     const app = await boot(
       WebReplModule.register({

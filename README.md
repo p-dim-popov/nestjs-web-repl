@@ -302,8 +302,10 @@ is also available for options that need DI (e.g. reading a `ConfigService`).
 ## Exports
 
 `WebReplModule`, `WebReplController`, `WebReplService`, `InMemoryWebReplAdapter`,
-and the types `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleAsyncOptions`,
-`WebReplEvent`, `SseEventType`.
+and `WEB_REPL_OPTIONS` (the DI token for the resolved options, useful when
+injecting them into a sibling-registered controller subclass), plus the types
+`WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleExtras`,
+`WebReplAdapterConfig`, `WebReplEvent`, `SseEventType`.
 
 ## Migrating from 1.x → 2.0
 

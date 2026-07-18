@@ -52,7 +52,19 @@ export function buildAdapterProvider(
       imports: config.imports ?? [],
     };
   }
-  // Otherwise it's a ready-made WebReplAdapter instance.
+  // Otherwise it must be a ready-made WebReplAdapter instance — verify it
+  // actually looks like one so a malformed block (e.g. a typo'd `usClass`)
+  // fails fast at registration instead of silently becoming a useValue.
+  if (
+    typeof config !== 'object' ||
+    config === null ||
+    typeof (config as { publish?: unknown }).publish !== 'function' ||
+    typeof (config as { subscribe?: unknown }).subscribe !== 'function'
+  ) {
+    throw new Error(
+      'WebReplModule: invalid adapter config — expected a WebReplAdapter instance, a Type, or a { useClass } / { useFactory } block',
+    );
+  }
   return { provider: { provide: WEB_REPL_ADAPTER, useValue: config }, imports: [] };
 }
 
