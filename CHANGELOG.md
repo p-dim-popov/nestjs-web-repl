@@ -1,3 +1,13 @@
+# [2.0.0](https://github.com/p-dim-popov/nestjs-web-repl/compare/v1.1.0...v2.0.0) (2026-07-18)
+
+
+* feat!: redesign module registration API to register/registerAsync ([9f1d758](https://github.com/p-dim-popov/nestjs-web-repl/commit/9f1d7589591a2db1e8bdb473ae4f198a161f92b7))
+
+
+### BREAKING CHANGES
+
+* WebReplModule.forRoot/forRootAsync are replaced by register/registerAsync. registerController and controllerPrefix/controllerGuards are removed (pass a controller: subclass for auth); the adapter moves out of options into the adapter extra (now also useClass/useFactory); a disabled module 404s every route at runtime instead of registering nothing.
+
 # [1.1.0](https://github.com/p-dim-popov/nestjs-web-repl/compare/v1.0.0...v1.1.0) (2026-07-18)
 
 
