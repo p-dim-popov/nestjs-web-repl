@@ -50,6 +50,10 @@ consider a change complete.
 - The controller returns strings and RxJS `Observable`s only (no raw
   `req`/`res`) so it stays platform-agnostic across Express and Fastify.
 - Keep files focused and small; match existing style.
+- **Releases are automated** (semantic-release on merge to `main`). Never hand-
+  edit `package.json` `version` or create release tags manually. Write
+  Conventional Commit subjects (`feat:`, `fix:`, `feat!:` …) — they drive the
+  version bump. See "Releasing" in `README.md`.
 
 ## Security invariants (do not regress these)
 
