@@ -28,9 +28,10 @@ consider a change complete.
 
 - `src/session/repl-session.ts` — one `node:repl` server per channel; the
   subtlest file in the repo (see "Gotchas").
-- `src/web-repl.service.ts` — the engine: adapter pub/sub, channel ownership,
-  per-channel serialized execution, output fan-out, SSE replay, TTL + channel
-  GC, heartbeat, runtime `enabled` enforcement.
+- `src/web-repl.service.ts` — the engine: adapter pub/sub, channel ownership
+  (a heartbeat-renewed lease — see "Owner-liveness lease" below), per-channel
+  serialized execution, output fan-out, SSE replay, TTL + channel GC,
+  heartbeat, runtime `enabled` enforcement.
 - `src/web-repl.controller.ts` — the three HTTP routes; SSE mapping; runtime
   `enabled` guards; reflected-XSS-safe UI rendering.
 - `src/ui/repl-ui.html.ts` — the inlined browser UI (Monaco from CDN).
@@ -77,6 +78,30 @@ consider a change complete.
 - **Per-channel serialization**: output is tagged with the currently executing
   command; commands on a channel run serially. Don't reintroduce a shared
   cross-channel "current command" field.
+- **Two unrelated heartbeats, don't conflate them**: `heartbeatInterval` /
+  `DEFAULTS.heartbeatInterval` drives the client-visible SSE `{ping}` keep-alive
+  in `stream()`. `ownerHeartbeatInterval` / `ownerLeaseTtl` drive the internal
+  owner-liveness lease (an instance re-announcing `claim` for channels it
+  owns, and the staleness check in `onCmd`). They are independent knobs for
+  independent mechanisms; changing one must never implicitly affect the
+  other.
+
+### Owner-liveness lease
+
+Ownership of a channel is a lease, not a permanent grant: the owning instance
+must re-announce `claim` every `ownerHeartbeatInterval` (an injectable clock,
+`WEB_REPL_CLOCK`, drives `ownerSeenAt` timestamps so tests can control
+staleness deterministically — see `web-repl.service.spec.ts`'s
+`makeServiceWithClock` helper). If no claim/heartbeat has been seen for a
+channel's recorded owner within `ownerLeaseTtl`, `onCmd` treats it as
+effectively ownerless and lets the ORIGIN instance of the next command for it
+take over (fresh session; the dead owner's variables are gone). A live,
+heartbeating owner must NEVER be preempted this way — `ownerLeaseTtl` is
+clamped in the constructor to stay strictly greater than
+`ownerHeartbeatInterval` specifically to guarantee that. If you touch this
+logic, re-run `src/web-repl.service.spec.ts`'s `owner-liveness` describe block
+a few times to confirm it isn't flaky — it's all driven by the injected clock,
+not real waits, so it should never be.
 
 ## Provenance
 

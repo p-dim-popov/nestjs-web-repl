@@ -1,6 +1,6 @@
 import { Module, type DynamicModule, type Provider } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { WEB_REPL_ADAPTER, WEB_REPL_OPTIONS } from './constants';
+import { WEB_REPL_ADAPTER, WEB_REPL_OPTIONS, WEB_REPL_CLOCK } from './constants';
 import type {
   WebReplModuleOptions,
   WebReplModuleAsyncOptions,
@@ -69,6 +69,10 @@ export class WebReplModule {
         provide: CONTEXT_FACTORY,
         useFactory: (moduleRef: ModuleRef) => () => buildReplContext(moduleRef),
         inject: [ModuleRef],
+      },
+      {
+        provide: WEB_REPL_CLOCK,
+        useValue: () => Date.now(),
       },
       WebReplService,
     ];

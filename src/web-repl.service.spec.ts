@@ -16,6 +16,32 @@ const makeService = async (
   return svc;
 };
 
+// For the owner-liveness tests below: a shared, manually-advanced virtual
+// clock so staleness can be asserted deterministically with zero real
+// waiting. `ownerHeartbeatInterval` is deliberately set large in *real* ms
+// (the interval governing the actual `setInterval` scheduling) so the
+// service's own background heartbeat timer never fires mid-test; staleness
+// itself is driven purely by advancing `now` and, where the test wants to
+// simulate an explicit heartbeat, invoking the private heartbeat tick
+// directly (mirroring how existing specs call `onCmd`/`onSys` directly).
+const makeSharedClock = (start = 0) => {
+  let now = start;
+  return { now: () => now, advance: (ms: number) => (now += ms) };
+};
+
+const makeServiceWithClock = async (
+  instanceId: string,
+  adapter: InMemoryWebReplAdapter,
+  clock: () => number,
+  overrides: Partial<WebReplModuleOptions> = {},
+  contextFactory: () => Record<string, unknown> = () => ({ marker: () => 'ctx-ok' }),
+) => {
+  const options: WebReplModuleOptions = { enabled: true, instanceId, adapter, ...overrides };
+  const svc = new WebReplService(options, adapter, contextFactory, clock);
+  await svc.onModuleInit();
+  return svc;
+};
+
 describe('WebReplService', () => {
   it('executes a command and streams a command echo plus output', async () => {
     const adapter = new InMemoryWebReplAdapter();
@@ -338,5 +364,156 @@ describe('WebReplService', () => {
     expect(String(outputEvent?.data)).toContain('2');
 
     await svc.onModuleDestroy();
+  });
+
+  // --- Owner-liveness hardening: ownership is a *lease* that a live owner
+  // must keep renewing (heartbeat). If the owner dies uncleanly (no
+  // `release` message ever gets published), its lease eventually goes
+  // stale and the ORIGIN instance of a later command may take over --
+  // instead of the channel being wedged fleet-wide forever. A live owner
+  // must NEVER be preempted within the lease -- that would split sessions
+  // and lose variables out from under a perfectly healthy owner, which is
+  // the bug this feature exists to avoid introducing. ---
+  describe('owner-liveness (lease-based ownership)', () => {
+    it('takes over a channel after its owner goes stale, restoring availability', async () => {
+      const adapter = new InMemoryWebReplAdapter();
+      const clock = makeSharedClock();
+      const opts = { ownerHeartbeatInterval: 60_000, ownerLeaseTtl: 100_000 };
+      const a = await makeServiceWithClock('A', adapter, clock.now, opts);
+      const b = await makeServiceWithClock('B', adapter, clock.now, opts);
+
+      await a.dispatch('lease-c1', 'const oldVar = 1');
+      await new Promise((r) => setTimeout(r, 20));
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((a as any).ownership.get('lease-c1')).toBe('A');
+
+      // A "dies": it never heartbeats again. Advance the shared virtual
+      // clock past the lease with no heartbeat from A in between.
+      clock.advance(100_001);
+
+      const events: Array<{ type: string; commandId: string | null; data: unknown }> = [];
+      const sub = b.stream('lease-c1', null).subscribe((e) => events.push(e));
+
+      // B is the origin of this command; the channel is effectively
+      // ownerless now (A's lease expired), so B must claim and execute it.
+      const { commandId: takeoverId } = await b.dispatch('lease-c1', 'const w = 99; w');
+      await new Promise((r) => setTimeout(r, 20));
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((b as any).ownership.get('lease-c1')).toBe('B');
+      const takeoverOutput = events.find((e) => e.type === 'output' && e.commandId === takeoverId);
+      expect(takeoverOutput).toBeDefined();
+      expect(String(takeoverOutput?.data)).toContain('99');
+
+      // The new owner's session persists state for a follow-up command --
+      // proving the channel is a live, usable B session now, not wedged.
+      const { commandId: followupId } = await b.dispatch('lease-c1', 'w + 1');
+      await new Promise((r) => setTimeout(r, 20));
+      const followupOutput = events.find((e) => e.type === 'output' && e.commandId === followupId);
+      expect(followupOutput).toBeDefined();
+      expect(String(followupOutput?.data)).toContain('100');
+
+      sub.unsubscribe();
+      await a.onModuleDestroy();
+      await b.onModuleDestroy();
+    });
+
+    it('does not preempt a live owner within the lease window', async () => {
+      const adapter = new InMemoryWebReplAdapter();
+      const clock = makeSharedClock();
+      const opts = { ownerHeartbeatInterval: 60_000, ownerLeaseTtl: 100_000 };
+      const a = await makeServiceWithClock('A', adapter, clock.now, opts);
+      const b = await makeServiceWithClock('B', adapter, clock.now, opts);
+
+      await a.dispatch('lease-c2', 'const v = 10');
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Advance, but stay strictly within the lease -- no takeover may occur.
+      clock.advance(50_000);
+
+      const events: Array<{ type: string; commandId: string | null; data: unknown }> = [];
+      const sub = b.stream('lease-c2', null).subscribe((e) => events.push(e));
+
+      const { commandId } = await b.dispatch('lease-c2', 'v + 5');
+      await new Promise((r) => setTimeout(r, 20));
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((b as any).ownership.get('lease-c2')).toBe('A');
+      const output = events.find((e) => e.type === 'output' && e.commandId === commandId);
+      expect(output).toBeDefined();
+      // `v` only resolves if A (the original owner, with `v` in scope) ran
+      // this -- a fresh B session would ReferenceError on `v`.
+      expect(String(output?.data)).toContain('15');
+
+      sub.unsubscribe();
+      await a.onModuleDestroy();
+      await b.onModuleDestroy();
+    });
+
+    it('an owner heartbeat refreshes the lease, preventing a later takeover', async () => {
+      const adapter = new InMemoryWebReplAdapter();
+      const clock = makeSharedClock();
+      const opts = { ownerHeartbeatInterval: 60_000, ownerLeaseTtl: 100_000 };
+      const a = await makeServiceWithClock('A', adapter, clock.now, opts);
+      const b = await makeServiceWithClock('B', adapter, clock.now, opts);
+
+      await a.dispatch('lease-c3', 'const v = 1');
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Advance close to the lease, then have A heartbeat -- simulating the
+      // interval tick directly, exactly like other specs call private
+      // methods (onCmd/onSys) directly for deterministic reproduction.
+      clock.advance(90_000);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (a as any).heartbeatOwnedChannels();
+      await new Promise((r) => setTimeout(r, 20)); // let the loopback claim land on B
+
+      // Total elapsed since the ORIGINAL claim is now 180_000 (> the
+      // 100_000 lease) -- which would be stale without the heartbeat above.
+      // But only 90_000 elapsed since the heartbeat refreshed ownerSeenAt,
+      // which is still within the lease.
+      clock.advance(90_000);
+
+      const events: Array<{ type: string; commandId: string | null; data: unknown }> = [];
+      const sub = b.stream('lease-c3', null).subscribe((e) => events.push(e));
+
+      const { commandId } = await b.dispatch('lease-c3', 'v + 1');
+      await new Promise((r) => setTimeout(r, 20));
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((b as any).ownership.get('lease-c3')).toBe('A');
+      const output = events.find((e) => e.type === 'output' && e.commandId === commandId);
+      expect(output).toBeDefined();
+      expect(String(output?.data)).toContain('2');
+
+      sub.unsubscribe();
+      await a.onModuleDestroy();
+      await b.onModuleDestroy();
+    });
+
+    it('clamps ownerLeaseTtl <= ownerHeartbeatInterval instead of throwing', async () => {
+      const adapter = new InMemoryWebReplAdapter();
+      const options: WebReplModuleOptions = {
+        enabled: true,
+        instanceId: 'A',
+        adapter,
+        ownerHeartbeatInterval: 10_000,
+        ownerLeaseTtl: 5_000, // <= heartbeat -- must be clamped, not thrown
+      };
+
+      let svc: WebReplService | undefined;
+      expect(() => {
+        svc = new WebReplService(options, adapter, () => ({}));
+      }).not.toThrow();
+      await svc!.onModuleInit();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const internals = svc as any;
+      expect(internals.ownerLeaseTtl).toBeGreaterThan(internals.ownerHeartbeatInterval);
+      expect(internals.ownerLeaseTtl).toBe(10_000 * 3);
+
+      await svc!.onModuleDestroy();
+    });
   });
 });
