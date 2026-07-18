@@ -177,11 +177,14 @@ solves this with an **ownership + fan-out** protocol:
   no claim/heartbeat has been seen for a channel's owner in `ownerLeaseTtl`
   (default 30s) — because that instance crashed or was killed without a
   clean shutdown — the channel is treated as effectively ownerless, and the
-  origin instance of the next command for it takes over. A live,
-  heartbeating owner is never preempted this way. Takeover loses that
-  channel's in-memory variables (the dead owner's session is gone) but
-  restores availability instead of leaving the channel wedged fleet-wide
-  (see [Limitations](#limitations-v1)).
+  origin instance of the next command for it takes over. `ownerLeaseTtl` is
+  enforced to be at least `ownerHeartbeatInterval * 2` (clamped up with a
+  warning otherwise), so a live owner always has a full heartbeat interval
+  of slack against publish/delivery jitter — a live, heartbeating owner is
+  never preempted this way. Takeover loses that channel's in-memory
+  variables (the dead owner's session is gone) but restores availability
+  instead of leaving the channel wedged fleet-wide (see
+  [Limitations](#limitations-v1)).
 - Because ownership is decided by whichever instance's `onCmd` handler runs
   first, two instances racing to claim the same brand-new channel at the
   same instant resolve **last-claim-wins** (see [Limitations](#limitations-v1)).
@@ -258,7 +261,7 @@ WebReplModule.forRoot({
 | `replayBufferSize`  | `number`         | `200`                       | Events kept per channel for SSE `Last-Event-ID` replay. |
 | `heartbeatInterval` | `number` (ms)    | `15_000`                    | SSE `system` `{ ping: true }` interval.             |
 | `ownerHeartbeatInterval` | `number` (ms) | `10_000`                | How often an instance re-announces `claim` for each channel it owns, keeping its ownership lease alive. |
-| `ownerLeaseTtl`     | `number` (ms)    | `30_000`                    | How long an ownership record is trusted since the last claim/heartbeat, before a stale owner's channel may be taken over. Must be strictly greater than `ownerHeartbeatInterval`; if not, the effective lease is clamped to `ownerHeartbeatInterval * 3` and a warning is logged (never throws). |
+| `ownerLeaseTtl`     | `number` (ms)    | `30_000`                    | How long an ownership record is trusted since the last claim/heartbeat, before a stale owner's channel may be taken over. Enforced minimum `ownerHeartbeatInterval * 2` (a live owner always keeps a full heartbeat interval of slack against delivery jitter); if the configured value is below that, it's clamped up to `ownerHeartbeatInterval * 2` and a warning is logged (never throws). |
 | `registerController`| `boolean`        | `true`                      | Set `false` to omit the default controller (see [Securing it](#securing-it)). `forRoot` only. |
 
 `WebReplModule.forRootAsync({ useFactory, inject, imports })` is also available

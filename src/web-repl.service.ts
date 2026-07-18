@@ -82,17 +82,25 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
 
     this.ownerHeartbeatInterval = options.ownerHeartbeatInterval ?? DEFAULTS.ownerHeartbeatInterval;
     const requestedLeaseTtl = options.ownerLeaseTtl ?? DEFAULTS.ownerLeaseTtl;
-    if (requestedLeaseTtl <= this.ownerHeartbeatInterval) {
-      // A lease that isn't strictly longer than the heartbeat interval could
-      // make a live, heartbeating owner look stale between heartbeats --
-      // preempting a healthy owner and splitting sessions. Clamp rather
-      // than throw: this is a debugging tool, it shouldn't fail boot over a
-      // misconfigured pair of durations.
-      this.ownerLeaseTtl = this.ownerHeartbeatInterval * 3;
+    // Enforce a MARGIN, not just strict inequality: a lease only one tick
+    // above the heartbeat interval leaves zero slack for publish/adapter
+    // delivery jitter (measured on a PEER's clock) -- a single heartbeat
+    // delivered even slightly late could make a live owner look stale to
+    // someone else, causing exactly the preemption/split-session/lost-vars
+    // failure this feature exists to prevent. Requiring the lease to be at
+    // least 2x the heartbeat interval guarantees a live owner always has at
+    // least one full heartbeat interval of slack against jitter before it
+    // could ever appear stale to a peer.
+    const minLeaseTtl = this.ownerHeartbeatInterval * 2;
+    if (requestedLeaseTtl < minLeaseTtl) {
+      // Clamp rather than throw: this is a debugging tool, it shouldn't fail
+      // boot over a misconfigured pair of durations.
+      this.ownerLeaseTtl = minLeaseTtl;
       this.logger.warn(
-        `ownerLeaseTtl (${requestedLeaseTtl}ms) must be strictly greater than ` +
-          `ownerHeartbeatInterval (${this.ownerHeartbeatInterval}ms); clamping the ` +
-          `effective lease to ${this.ownerLeaseTtl}ms`,
+        `ownerLeaseTtl (${requestedLeaseTtl}ms) must be at least 2x ` +
+          `ownerHeartbeatInterval (${this.ownerHeartbeatInterval}ms) so a live owner ` +
+          `always has a full heartbeat interval of slack against delivery jitter; ` +
+          `clamping the effective lease to ${this.ownerLeaseTtl}ms`,
       );
     } else {
       this.ownerLeaseTtl = requestedLeaseTtl;
@@ -390,6 +398,20 @@ export class WebReplService implements OnModuleInit, OnModuleDestroy {
     // non-owner instance that watched a channel via SSE, saw a remote
     // claim/heartbeat for it, then had its own local ChannelState evicted).
     this.ownerSeenAt.delete(channel);
+    // Deliberately NOT deleting `ownership` here (unlike the onSys release
+    // branch, which deletes both): `ownership` is cluster-wide state --
+    // every instance's map should agree on who owns a channel, and that
+    // agreement is only supposed to change via an explicit claim/release
+    // message, not as a side effect of one instance's local eviction
+    // bookkeeping. `ownerSeenAt`, by contrast, is purely local staleness
+    // tracking for this instance's own onCmd checks, so it's fine (and
+    // necessary, to avoid leaking) to drop it here. In practice this
+    // instance only ever reaches eviction-eligibility (no session, empty
+    // buffer) for a channel it owns if execution never produced any
+    // buffered output at all, which -- given emit() always buffers at least
+    // an error/done system event before pending drops to 0 -- shouldn't
+    // happen while genuinely owned; if a future refactor changes that
+    // invariant, reconsider this asymmetry.
   }
 
   private touchTtl(channel: string, state: ChannelState): void {

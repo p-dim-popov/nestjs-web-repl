@@ -23,9 +23,13 @@ export interface WebReplModuleOptions {
    * How long an ownership record is trusted since the last claim/heartbeat
    * seen for it, before another instance may take over a channel whose owner
    * has gone silent (e.g. crashed or was killed without a clean shutdown).
-   * Default 30000. Must be strictly greater than `ownerHeartbeatInterval` --
-   * if not, the effective lease is clamped to `ownerHeartbeatInterval * 3`
-   * and a warning is logged (this never throws).
+   * Default 30000. Enforced minimum: `ownerHeartbeatInterval * 2` -- a live
+   * owner must always have at least one full heartbeat interval of slack
+   * against publish/delivery jitter, or a single late-arriving heartbeat
+   * could make it look stale to a peer and get preempted. If the configured
+   * value is below that minimum, the effective lease is clamped up to
+   * `ownerHeartbeatInterval * 2` and a warning is logged (this never
+   * throws).
    */
   ownerLeaseTtl?: number;
   /** When false, the default controller is not registered (user registers a subclass). Default true. */

@@ -97,8 +97,13 @@ channel's recorded owner within `ownerLeaseTtl`, `onCmd` treats it as
 effectively ownerless and lets the ORIGIN instance of the next command for it
 take over (fresh session; the dead owner's variables are gone). A live,
 heartbeating owner must NEVER be preempted this way — `ownerLeaseTtl` is
-clamped in the constructor to stay strictly greater than
-`ownerHeartbeatInterval` specifically to guarantee that. If you touch this
+clamped in the constructor to at least `ownerHeartbeatInterval * 2` (not just
+"greater than") specifically to guarantee that: a bare majority margin (e.g.
+lease = heartbeat + 1ms) leaves zero slack for publish/adapter delivery
+jitter measured on a PEER's clock, so a single heartbeat delivered late could
+make a live owner look stale to someone else and get preempted. The 2x
+margin guarantees a live owner always has at least one full heartbeat
+interval of slack. If you touch this
 logic, re-run `src/web-repl.service.spec.ts`'s `owner-liveness` describe block
 a few times to confirm it isn't flaky — it's all driven by the injected clock,
 not real waits, so it should never be.
