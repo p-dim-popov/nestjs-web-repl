@@ -40,6 +40,11 @@ consider a change complete.
   Isolates two fragile `@nestjs/core` deep imports (see "Gotchas").
 - `src/adapters/`, `src/ring-buffer.ts`, `src/interfaces/`, `src/constants.ts`
 - `example/` — a runnable host app. `test/` — the two-instance e2e.
+- `src/cli/` — the `install-skill` CLI (`index.ts` dispatcher + `install-skill.ts`
+  copy logic) exposed as the `nestjs-web-repl` bin.
+- `skill/SKILL.md` — the consumer-facing Claude Code skill shipped to package
+  users (distinct from this AGENTS.md, which is for contributors). Installed via
+  `npx nestjs-web-repl install-skill`.
 
 ## Conventions
 
