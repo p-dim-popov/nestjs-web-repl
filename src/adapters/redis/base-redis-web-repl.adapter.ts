@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { WebReplAdapter } from '../../interfaces/web-repl-adapter.interface';
 
 type Handler = (message: string) => void;
@@ -9,6 +10,7 @@ type Handler = (message: string) => void;
 export abstract class BaseRedisWebReplAdapter implements WebReplAdapter {
   private readonly handlers = new Map<string, Set<Handler>>();
   private readonly subscribed = new Set<string>();
+  private readonly logger = new Logger(this.constructor.name);
 
   async publish(topic: string, message: string): Promise<void> {
     await this.doPublish(topic, message);
@@ -31,7 +33,18 @@ export abstract class BaseRedisWebReplAdapter implements WebReplAdapter {
   protected dispatch(topic: string, message: string): void {
     const set = this.handlers.get(topic);
     if (!set) return;
-    for (const handler of set) handler(message);
+    for (const handler of set) {
+      try {
+        handler(message);
+      } catch (err) {
+        // A handler fault (e.g. malformed inbound JSON on a shared Redis
+        // channel) must not escape into the client's message emitter and crash
+        // the process, nor abort delivery to the remaining handlers.
+        this.logger.error(
+          `web-repl adapter handler for "${topic}" threw: ${String(err)}`,
+        );
+      }
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

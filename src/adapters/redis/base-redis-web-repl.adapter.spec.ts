@@ -64,4 +64,15 @@ describe('BaseRedisWebReplAdapter', () => {
     a.emit('webrepl:cmd', 'after');
     expect(got).toEqual([]);
   });
+
+  it('isolates a throwing handler: dispatch does not throw and later handlers still run', async () => {
+    const a = new FakeBase();
+    const got: string[] = [];
+    await a.subscribe('webrepl:cmd', () => {
+      throw new Error('boom');
+    });
+    await a.subscribe('webrepl:cmd', (m) => got.push(m));
+    expect(() => a.emit('webrepl:cmd', 'x')).not.toThrow();
+    expect(got).toEqual(['x']);
+  });
 });
