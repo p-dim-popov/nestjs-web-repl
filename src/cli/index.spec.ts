@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { run } from './index';
 import { SKILL_TARGET_SUBPATH } from './install-skill';
 
@@ -9,6 +9,10 @@ describe('cli run', () => {
   let cwd: string;
   beforeEach(() => {
     cwd = mkdtempSync(join(tmpdir(), 'webrepl-cli-'));
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
   });
 
   it('prints usage and exits 0 for --help', () => {

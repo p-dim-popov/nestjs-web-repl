@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,14 +6,20 @@ import { installSkill, SKILL_TARGET_SUBPATH } from './install-skill';
 
 describe('installSkill', () => {
   let cwd: string;
+  let srcDir: string;
   let sourcePath: string;
   const SOURCE = '---\nname: nestjs-web-repl\ndescription: x\n---\nbody\n';
 
   beforeEach(() => {
     cwd = mkdtempSync(join(tmpdir(), 'webrepl-cwd-'));
-    const srcDir = mkdtempSync(join(tmpdir(), 'webrepl-src-'));
+    srcDir = mkdtempSync(join(tmpdir(), 'webrepl-src-'));
     sourcePath = join(srcDir, 'SKILL.md');
     writeFileSync(sourcePath, SOURCE);
+  });
+
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(srcDir, { recursive: true, force: true });
   });
 
   const target = () => join(cwd, SKILL_TARGET_SUBPATH);

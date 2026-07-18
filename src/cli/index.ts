@@ -44,6 +44,10 @@ export function run(argv: string[], cwd: string): RunResult {
               `differs from the shipped version: ${path}\n` +
               `re-run with --force to overwrite\n`,
           };
+        default: {
+          const _exhaustive: never = status;
+          return { code: 1, out: '', err: `internal error: unhandled status ${String(_exhaustive)}\n` };
+        }
       }
     } catch (err) {
       return { code: 1, out: '', err: `error: ${(err as Error).message}\n` };
