@@ -47,6 +47,7 @@
     "@swc/core": "^1.15.43",
     "@types/node": "^20",
     "@types/supertest": "^6",
+    "ioredis-mock": "^8.13.1",
     "reflect-metadata": "^0.2",
     "rxjs": "^7",
     "semantic-release": "^25.0.8",
