@@ -1,3 +1,13 @@
+# [1.1.0](https://github.com/p-dim-popov/nestjs-web-repl/compare/v1.0.0...v1.1.0) (2026-07-18)
+
+
+### Features
+
+* add installSkill copy function ([f9e18d1](https://github.com/p-dim-popov/nestjs-web-repl/commit/f9e18d189327aaf13e1f26296d3af0de60662be5))
+* add nestjs-web-repl install-skill CLI ([52b2ae3](https://github.com/p-dim-popov/nestjs-web-repl/commit/52b2ae34ca13fd732be99b67bb488c1f13ec5a02))
+* add shipped Claude Code skill source ([41e5924](https://github.com/p-dim-popov/nestjs-web-repl/commit/41e5924a39f6d8a3c982375f460e2d4f8f9c6ea9))
+* publish and document the install-skill CLI ([64b79a9](https://github.com/p-dim-popov/nestjs-web-repl/commit/64b79a9c3f86bf7a80c8c19271f21961a2f01b53))
+
 # 1.0.0 (2026-07-18)
 
 
