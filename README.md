@@ -7,19 +7,18 @@ so `get(SomeService)`, `resolve(...)`, `select(...)`, and friends all work exact
 they do in the local REPL — except reachable over HTTP, from anywhere, against a
 running server.
 
-> ## ⚠️ Security warning — read this before enabling anything
+> ## ⚠️ Security
 >
-> **These endpoints execute arbitrary code inside your running application.**
-> A command like `require('child_process').execSync('...')` runs with the full
-> privileges of your Node process. This library ships with **no authentication,
-> no authorization, and no rate limiting**. The `enabled` option is the *only*
-> built-in safety rail, and it is a blunt boolean — it does not check who is
-> asking.
+> These endpoints run arbitrary code inside your app, with the full privileges of
+> your Node process. That's the whole point — it's a debugging tool — and it's
+> also the risk: anyone who can reach an enabled endpoint can run anything your
+> app can.
 >
-> Do not expose these routes on a public-facing port. Do not enable this in
-> production unless you have put your own auth in front of it (see
-> [Securing it](#securing-it) below). Treat this exactly like you would treat
-> giving someone a shell on your server — because that is what it is.
+> The module ships no authentication of its own; `enabled` is an on/off switch,
+> not a lock. Control access yourself: gate `enabled` behind an environment
+> variable and put your own guard in front of the routes ([Securing it](#securing-it)).
+>
+> Guarded and on a trusted network, it's a safe way to inspect a running app.
 
 ## Install
 
