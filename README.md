@@ -348,6 +348,60 @@ intent and do not, and cannot, technically enforce anything, nor do they bind
 GitHub's own hosting. Using an AI coding assistant to help you *work with* this
 library is entirely fine and expected.
 
+## Releasing
+
+Releases are **fully automated**. Merging a PR to `main` with releasable
+[Conventional Commits](https://www.conventionalcommits.org/) triggers
+`.github/workflows/release.yml`, which runs the full test suite and then
+[semantic-release](https://semantic-release.gitbook.io/):
+
+| Commit type            | Version bump      |
+| ---------------------- | ----------------- |
+| `fix:`                 | patch (x.y.**z**) |
+| `feat:`                | minor (x.**y**.0) |
+| `feat!:` / `BREAKING CHANGE:` in body | major (**x**.0.0) |
+| `docs:` `chore:` `test:` `ci:` `refactor:` | no release |
+
+It computes the next version, updates `CHANGELOG.md`, publishes to npm
+(**tokenless via OIDC trusted publishing, with provenance attached
+automatically**), tags the commit, cuts a GitHub Release, and commits the
+version/changelog bump back to `main` as `chore(release): x.y.z [skip ci]`.
+Do not bump `version` in `package.json` by hand.
+
+### One-time bootstrap (maintainer, once)
+
+npm's OIDC trusted publishing cannot perform a package's *first* publish, so a
+maintainer does this once:
+
+1. **Create the package on npm with a placeholder:**
+   ```bash
+   npm login
+   npm version 0.0.0 --no-git-tag-version   # temp, do not commit
+   npm publish --access public
+   git checkout -- package.json               # restore working version
+   ```
+   Do **not** create a git tag for `0.0.0`; with no tags semantic-release's
+   first automated release is `1.0.0`.
+2. **Register the Trusted Publisher** at
+   `https://www.npmjs.com/package/nestjs-web-repl/access` → *Trusted Publishers*
+   → GitHub Actions: owner `p-dim-popov`, repository `nestjs-web-repl`, workflow
+   `release.yml` (leave environment blank). After this, no token is needed.
+3. (Optional, after `1.0.0` ships) `npm deprecate nestjs-web-repl@0.0.0 "placeholder"`.
+
+### Verifying the first real release
+
+After the bootstrap, the next merge to `main` containing a `feat:`/`fix:` commit
+should produce `1.0.0`. Confirm:
+
+- `npm view nestjs-web-repl version` → `1.0.0`
+- the npm package page shows a provenance / "Published via GitHub Actions" badge
+- a `v1.0.0` git tag and a matching GitHub Release with generated notes exist
+- `CHANGELOG.md` and a `chore(release): 1.0.0` commit are on `main`
+- the `release.yml` run is green
+
+If the publish step fails with an auth error, the Trusted Publisher registration
+(step 2) is missing or its repo/workflow fields don't match exactly.
+
 ## Contributing
 
 Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). AI-

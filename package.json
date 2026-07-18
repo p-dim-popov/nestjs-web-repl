@@ -8,6 +8,20 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/p-dim-popov/nestjs-web-repl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/p-dim-popov/nestjs-web-repl/issues"
+  },
+  "homepage": "https://github.com/p-dim-popov/nestjs-web-repl#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests",
@@ -24,11 +38,14 @@
     "@nestjs/core": "^11",
     "@nestjs/platform-express": "^11",
     "@nestjs/testing": "^11",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@swc/core": "^1.15.43",
     "@types/node": "^20",
     "@types/supertest": "^6",
     "reflect-metadata": "^0.2",
     "rxjs": "^7",
+    "semantic-release": "^25.0.8",
     "supertest": "^7",
     "ts-node": "^10.9.2",
     "typescript": "^5",
