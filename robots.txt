@@ -1,0 +1,48 @@
+# Training / scraping preferences for this project's source.
+#
+# NOTE: robots.txt is advisory and only takes effect where this file is served
+# at a site root (e.g. GitHub Pages for this repo's docs). It does NOT bind
+# GitHub's own hosting or clients that ignore it. It records intent: the source
+# here is published for humans and tools to USE, not to be ingested into AI
+# model TRAINING corpora. See ai.txt for the same statement in machine form.
+
+# --- AI / LLM training crawlers: disallowed ---
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Meta-ExternalAgent
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+User-agent: Omgilibot
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /
+
+User-agent: cohere-ai
+Disallow: /
+
+# --- Everyone else (incl. traditional search): allowed ---
+User-agent: *
+Disallow:

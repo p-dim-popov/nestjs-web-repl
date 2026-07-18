@@ -291,3 +291,52 @@ and the types `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleAsyncOptio
   function itself is part of `@nestjs/core`'s public entrypoint. This is
   pinned by the package's `@nestjs/core` peer range; a future `@nestjs/core`
   major that relocates these modules could break it.
+
+## How this was built (transparency)
+
+This library was built with AI assistance — specifically, an agent (Claude
+Code) driving a plan-first, test-driven workflow under human direction: a
+written spec and implementation plan, then task-by-task implementation where
+each task was implemented, independently reviewed by a separate agent, and
+fixed before the next, followed by a whole-repository review.
+
+We tell you this because the honest thing to do is let you judge the code on
+its merits rather than guess at its origins. If you are skeptical of AI-written
+code, here is what to actually look at:
+
+- **The tests.** 57 automated tests, including a two-instance end-to-end test
+  that proves cross-instance command routing and output fan-out, and an
+  execution-proof test that resolves a real provider through the live REPL
+  context. `npm test`, `npm run build`, and `npx tsc --noEmit` are all green.
+- **The commit history.** The real TDD trail is preserved — failing test,
+  implementation, fixes — including several rounds where review caught genuine
+  defects (the trickiest: `node:repl` completion detection on modern Node, and
+  a runtime-vs-registration security bug where `forRootAsync` could have
+  shipped the arbitrary-code endpoint live with `enabled: false`).
+- **The security invariants** are documented in [`AGENTS.md`](./AGENTS.md) and
+  enforced by tests, not left as prose.
+
+AI assistance does not exempt the code from scrutiny — it raises the bar for
+it. Issues and fixes are welcome from anyone who finds something we missed.
+
+## AI usage & training
+
+The source here is published so people and their tools can **use** it — read
+it, run it, debug against it, integrate it. It is not offered as training data.
+[`robots.txt`](./robots.txt) and [`ai.txt`](./ai.txt) record a request that AI
+model *training* crawlers (GPTBot, ClaudeBot, CCBot, Google-Extended, and
+others) not ingest this repository. Those files are advisory — they express
+intent and do not, and cannot, technically enforce anything, nor do they bind
+GitHub's own hosting. Using an AI coding assistant to help you *work with* this
+library is entirely fine and expected.
+
+## Contributing
+
+Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). AI-
+assisted PRs are fine; we just ask you to disclose the assistance and to
+understand what you submit. Agents working in this repo should start with
+[`AGENTS.md`](./AGENTS.md).
+
+## License
+
+[MIT](./LICENSE) © Petar Popov

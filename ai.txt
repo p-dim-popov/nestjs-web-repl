@@ -1,0 +1,21 @@
+# ai.txt — AI usage preferences for this repository
+#
+# A machine-readable statement of intent, complementing robots.txt. Like
+# robots.txt, it is advisory: it does not and cannot technically prevent
+# access. It records what the maintainers permit.
+
+# Reserved: do not ingest this repository's contents into AI/ML model TRAINING
+# or fine-tuning datasets, and do not use it to generate derivative training
+# data, without prior written permission.
+Disallow: /training
+Disallow: /fine-tuning
+Disallow: /dataset-generation
+
+# Permitted: reading the code to help a human use, debug, or integrate this
+# library (e.g. an AI coding assistant answering questions about it), and
+# ordinary search indexing. Attribution appreciated; the MIT LICENSE governs
+# reuse of the code itself.
+Allow: /assistive-use
+Allow: /search-indexing
+
+# Contact: open an issue on the repository.
