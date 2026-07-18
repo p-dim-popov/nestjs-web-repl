@@ -8,6 +8,20 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/p-dim-popov/nestjs-web-repl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/p-dim-popov/nestjs-web-repl/issues"
+  },
+  "homepage": "https://github.com/p-dim-popov/nestjs-web-repl#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests",
