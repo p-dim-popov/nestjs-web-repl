@@ -10,7 +10,7 @@ const makeService = async (
   adapter: InMemoryWebReplAdapter,
   contextFactory: () => Record<string, unknown> = () => ({ marker: () => 'ctx-ok' }),
 ) => {
-  const options: WebReplModuleOptions = { enabled: true, instanceId, adapter };
+  const options: WebReplModuleOptions = { enabled: true, instanceId };
   const svc = new WebReplService(options, adapter, contextFactory);
   await svc.onModuleInit();
   return svc;
@@ -36,7 +36,7 @@ const makeServiceWithClock = async (
   overrides: Partial<WebReplModuleOptions> = {},
   contextFactory: () => Record<string, unknown> = () => ({ marker: () => 'ctx-ok' }),
 ) => {
-  const options: WebReplModuleOptions = { enabled: true, instanceId, adapter, ...overrides };
+  const options: WebReplModuleOptions = { enabled: true, instanceId, ...overrides };
   const svc = new WebReplService(options, adapter, contextFactory, clock);
   await svc.onModuleInit();
   return svc;
@@ -207,7 +207,7 @@ describe('WebReplService', () => {
   // can't ship a live execution endpoint. ---
   describe('when disabled at runtime', () => {
     const makeDisabledService = (adapter: InMemoryWebReplAdapter) => {
-      const options: WebReplModuleOptions = { enabled: false, instanceId: 'D', adapter };
+      const options: WebReplModuleOptions = { enabled: false, instanceId: 'D' };
       return new WebReplService(options, adapter, () => ({ marker: () => 'ctx-ok' }));
     };
 
