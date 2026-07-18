@@ -1,13 +1,23 @@
 ---
 name: nestjs-web-repl
-description: Use when adding or using a live network/web/remote REPL in a NestJS app via the nestjs-web-repl package — wiring WebReplModule into AppModule, the enabled security gate, and the POST command / SSE / browser-UI endpoints.
+description: Use when wiring a live, in-process REPL into a NestJS app over HTTP via the nestjs-web-repl package — adding WebReplModule to AppModule, gating the REPL behind an environment flag, or calling/debugging its POST command, SSE stream, or browser-UI routes.
 ---
 
 # nestjs-web-repl
 
+## Overview
+
 `nestjs-web-repl` exposes a live NestJS REPL over HTTP: a POST command endpoint,
 a Server-Sent Events output stream, and a Monaco browser UI, backed by real
 `@nestjs/core` REPL sessions running inside the host app.
+
+## When to use this skill
+
+- Adding `WebReplModule` to a NestJS `AppModule` for the first time.
+- Reviewing or writing the code that enables/disables the REPL (the security
+  gate below is non-negotiable).
+- Calling or troubleshooting the `POST`/SSE/browser-UI routes at runtime.
+- Running the package's own examples (there's a `ts-node`-vs-`tsx` gotcha).
 
 ## Security first — read before wiring
 
@@ -55,9 +65,11 @@ WebReplModule.forRootAsync({
 
 Three routes are registered (default base path `repl`), keyed by a channel name:
 
-- `POST repl/{channel}` — send a line of code to execute.
-- `GET repl/{channel}` — Server-Sent Events stream of output for the channel.
-- `GET repl/{channel}/ui` — Monaco editor + terminal browser UI.
+| Route | Purpose |
+|---|---|
+| `POST repl/{channel}` | Send a line of code to execute. |
+| `GET repl/{channel}` | Server-Sent Events stream of output for the channel. |
+| `GET repl/{channel}/ui` | Monaco editor + terminal browser UI. |
 
 ```bash
 # stream output (leave running in one terminal)
@@ -84,3 +96,10 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
 - **Runnable example gotcha:** run examples with `ts-node`, not `tsx` —
   `tsx`/esbuild strips the decorator metadata NestJS DI needs. See "Limitations"
   in the README.
+
+## Common mistakes
+
+- Enabling the REPL unconditionally (or defaulting `enabled` to `true`) —
+  always key it off an environment flag that defaults to off.
+- Running a README example with `tsx` and hitting missing-provider/DI errors —
+  use `ts-node` instead.
