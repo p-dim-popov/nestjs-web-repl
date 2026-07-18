@@ -24,4 +24,10 @@ describe('shipped skill source', () => {
     expect(wireIdx).toBeGreaterThan(-1);
     expect(securityIdx).toBeLessThan(wireIdx);
   });
+
+  it('documents the current register() API, not the removed forRoot()', () => {
+    const body = raw();
+    expect(body).toContain('WebReplModule.register(');
+    expect(body).not.toContain('forRoot');
+  });
 });

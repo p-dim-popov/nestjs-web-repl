@@ -17,7 +17,7 @@ const boot = async (
   adapter: InMemoryWebReplAdapter,
 ): Promise<INestApplication> => {
   const mod = await Test.createTestingModule({
-    imports: [WebReplModule.forRoot({ enabled: true, instanceId, adapter })],
+    imports: [WebReplModule.register({ enabled: true, instanceId, adapter })],
   }).compile();
   const app: INestApplication = mod.createNestApplication();
   await app.init();

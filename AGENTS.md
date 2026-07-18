@@ -35,7 +35,8 @@ consider a change complete.
 - `src/web-repl.controller.ts` — the three HTTP routes; SSE mapping; runtime
   `enabled` guards; reflected-XSS-safe UI rendering.
 - `src/ui/repl-ui.html.ts` — the inlined browser UI (Monaco from CDN).
-- `src/web-repl.module.ts` — `forRoot` / `forRootAsync`.
+- `src/web-repl.module.ts` + `src/web-repl.module-definition.ts` — `register` /
+  `registerAsync` (ConfigurableModuleBuilder).
 - `src/context/build-repl-context.ts` — builds the app-wide REPL context.
   Isolates two fragile `@nestjs/core` deep imports (see "Gotchas").
 - `src/adapters/`, `src/ring-buffer.ts`, `src/interfaces/`, `src/constants.ts`
@@ -64,7 +65,7 @@ consider a change complete.
 
 1. **`enabled` is enforced at runtime**, not just at registration. A disabled
    module must not subscribe to the adapter and must 404 on every route — via
-   both `forRoot` and `forRootAsync`. This is the product's only built-in
+   both `register` and `registerAsync`. This is the product's only built-in
    safety rail; treating it as advisory-only is a critical bug.
 2. **The UI escapes the channel name** for the `<script>` context (`<`
    escaping) and uses `encodeURIComponent` for URLs. SSE payloads render via

@@ -10,7 +10,7 @@ const makeService = async (
   adapter: InMemoryWebReplAdapter,
   contextFactory: () => Record<string, unknown> = () => ({ marker: () => 'ctx-ok' }),
 ) => {
-  const options: WebReplModuleOptions = { enabled: true, instanceId, adapter };
+  const options: WebReplModuleOptions = { enabled: true, instanceId };
   const svc = new WebReplService(options, adapter, contextFactory);
   await svc.onModuleInit();
   return svc;
@@ -36,7 +36,7 @@ const makeServiceWithClock = async (
   overrides: Partial<WebReplModuleOptions> = {},
   contextFactory: () => Record<string, unknown> = () => ({ marker: () => 'ctx-ok' }),
 ) => {
-  const options: WebReplModuleOptions = { enabled: true, instanceId, adapter, ...overrides };
+  const options: WebReplModuleOptions = { enabled: true, instanceId, ...overrides };
   const svc = new WebReplService(options, adapter, contextFactory, clock);
   await svc.onModuleInit();
   return svc;
@@ -203,11 +203,11 @@ describe('WebReplService', () => {
   });
 
   // --- CRITICAL 1: `enabled` must be enforced at runtime, not just at
-  // module-registration time, so a forRootAsync-resolved `enabled: false`
+  // module-registration time, so a registerAsync-resolved `enabled: false`
   // can't ship a live execution endpoint. ---
   describe('when disabled at runtime', () => {
     const makeDisabledService = (adapter: InMemoryWebReplAdapter) => {
-      const options: WebReplModuleOptions = { enabled: false, instanceId: 'D', adapter };
+      const options: WebReplModuleOptions = { enabled: false, instanceId: 'D' };
       return new WebReplService(options, adapter, () => ({ marker: () => 'ctx-ok' }));
     };
 
@@ -506,7 +506,6 @@ describe('WebReplService', () => {
       const options: WebReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
-        adapter,
         ownerHeartbeatInterval: 10_000,
         // Deliberately only *slightly* above the heartbeat (the reviewer's
         // reproduction: a "legal" tight config like heartbeat + 1 leaves
@@ -538,7 +537,6 @@ describe('WebReplService', () => {
       const options: WebReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
-        adapter,
         ownerHeartbeatInterval: 10_000,
         ownerLeaseTtl: 5_000, // <= heartbeat -- must be clamped, not thrown
       };
@@ -558,7 +556,6 @@ describe('WebReplService', () => {
       const options: WebReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
-        adapter,
         ownerHeartbeatInterval: 10_000,
         ownerLeaseTtl: 25_000, // > 10_000 * 2 -- must be respected as-is
       };
@@ -581,7 +578,6 @@ describe('WebReplService', () => {
         const options: WebReplModuleOptions = {
           enabled: true,
           instanceId: 'A',
-          adapter,
           ownerHeartbeatInterval: 5_000,
           ownerLeaseTtl: 20_000,
         };
