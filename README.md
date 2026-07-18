@@ -274,6 +274,21 @@ for options that need DI (e.g. reading a `ConfigService`); see the
 and the types `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleAsyncOptions`,
 `WebReplEvent`, `SseEventType`.
 
+## AI skill
+
+This package ships a [Claude Code](https://claude.com/claude-code) skill that
+teaches coding agents how to wire in and use the REPL safely. After installing
+the package, run:
+
+```bash
+npx nestjs-web-repl install-skill
+```
+
+This writes `.claude/skills/nestjs-web-repl/SKILL.md` into your project; your
+agent picks it up on its next session. The command never clobbers a modified
+skill file silently — if you have edited it, re-run with `--force` to refresh it
+after upgrading the package.
+
 ## Limitations (v1)
 
 - **Monaco loads from a CDN** (`cdn.jsdelivr.net`) inside the `/ui` page — the
