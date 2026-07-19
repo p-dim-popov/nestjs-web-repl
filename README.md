@@ -30,6 +30,14 @@ npm install nestjs-web-repl
 > `register`/`registerAsync` — see [Quick start](#quick-start) and
 > [Securing it](#securing-it).
 
+## Live demo
+
+Try it without installing anything — this opens a full NestJS app running the REPL in an in-browser StackBlitz sandbox (the editor and everything else runs in your browser; nothing touches a shared server):
+
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/p-dim-popov/nestjs-web-repl/tree/main/examples/stackblitz)
+
+First boot takes ~30–60s (dependency install + startup); after that the REPL is live. The [demo project](./examples/stackblitz) and its [command cheatsheet](./examples/stackblitz/TRY-THESE.md) live in `examples/stackblitz/`.
+
 ## Quick start
 
 ```ts
