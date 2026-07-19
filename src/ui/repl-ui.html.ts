@@ -22,13 +22,14 @@ export function renderReplUi(channel: string): string {
   html,body{height:100%;margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;background:#1e1e1e;color:#ddd}
   #app{display:flex;flex-direction:column;height:100vh;height:100dvh}
   #out{flex:1;overflow:auto;padding:10px;white-space:pre-wrap;font-size:13px;line-height:1.4}
+  #out:empty::before{content:'Run a command to see output.';color:#666}
   #out .cmd{color:#4ec9b0}#out .sys{color:#888}#out .err{color:#f14c4c}
   #editor{height:32%}
   #bar{display:flex;gap:12px;align-items:center;padding:6px 10px;background:#252526;font-size:12px;border-top:1px solid #333;border-bottom:1px solid #333}
   #bar .dot{width:8px;height:8px;border-radius:50%;background:#666;display:inline-block;margin-right:4px}
   #bar .dot.on{background:#3fb950}
   button{background:#0e639c;color:#fff;border:0;padding:4px 12px;border-radius:3px;cursor:pointer}
-  @media (max-width:600px){#run{min-height:44px;padding:10px 14px;font-size:15px}#run .kbd-hint{display:none}}
+  @media (max-width:600px){#out{flex:1 1 0;min-height:96px}#editor{height:auto;flex:1 1 0;min-height:200px}#run{min-height:44px;padding:10px 16px;font-size:15px}#run .kbd-hint{display:none}}
 </style>
 </head>
 <body>

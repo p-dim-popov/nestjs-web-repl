@@ -22,6 +22,16 @@ describe('renderReplUi', () => {
     expect(html).toMatch(/min-height:\s*44px/);
   });
 
+  it('rebalances the editor to a usable height on narrow screens', () => {
+    // Mobile gives the editor a floor so it is not a thin strip under a huge
+    // output pane.
+    expect(html).toMatch(/#editor\{[^}]*min-height:\s*200px/);
+  });
+
+  it('shows a placeholder while there is no output yet', () => {
+    expect(html).toMatch(/#out:empty::before\{content:'[^']+'/);
+  });
+
   it('keeps the Ctrl+Enter hint in the desktop markup', () => {
     expect(html).toContain('class="kbd-hint"');
     expect(html).toContain('(Ctrl+Enter)');
