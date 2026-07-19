@@ -29,7 +29,16 @@ export function renderReplUi(channel: string): string {
   #bar .dot{width:8px;height:8px;border-radius:50%;background:#666;display:inline-block;margin-right:4px}
   #bar .dot.on{background:#3fb950}
   button{background:#0e639c;color:#fff;border:0;padding:4px 12px;border-radius:3px;cursor:pointer}
-  @media (max-width:600px){#out{flex:1 1 0;min-height:96px}#editor{height:auto;flex:1 1 0;min-height:200px}#run{min-height:44px;padding:10px 16px;font-size:15px}#run .kbd-hint{display:none}}
+  @media (max-width:600px){
+    #bar{flex-wrap:wrap;gap:6px 12px;padding:8px 10px}
+    #bar>span{white-space:nowrap}
+    #owner{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+    .run-wrap{flex:1 0 100%}
+    #run{width:100%;min-height:44px;padding:10px 16px;font-size:15px;white-space:nowrap}
+    #run .kbd-hint{display:none}
+    #out{flex:1 1 0;min-height:96px}
+    #editor{height:auto;flex:1 1 0;min-height:200px}
+  }
 </style>
 </head>
 <body>
@@ -39,7 +48,7 @@ export function renderReplUi(channel: string): string {
     <span><span id="dot" class="dot"></span><span id="state">connecting…</span></span>
     <span>channel: <b>${safe}</b></span>
     <span id="owner"></span>
-    <span style="margin-left:auto"><button id="run">Run ▶ <span class="kbd-hint">(Ctrl+Enter)</span></button></span>
+    <span class="run-wrap" style="margin-left:auto"><button id="run">Run ▶ <span class="kbd-hint">(Ctrl+Enter)</span></button></span>
   </div>
   <div id="editor"></div>
 </div>

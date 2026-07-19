@@ -22,6 +22,14 @@ describe('renderReplUi', () => {
     expect(html).toMatch(/min-height:\s*44px/);
   });
 
+  it('wraps the bar as whole items and gives Run its own full-width row on mobile', () => {
+    // Prevents the crammed "Run" over "▶" / "channel:" over "dev" wrapping.
+    expect(html).toMatch(/#bar\{[^}]*flex-wrap:\s*wrap/);
+    expect(html).toMatch(/#bar>span\{[^}]*white-space:\s*nowrap/);
+    expect(html).toContain('class="run-wrap"');
+    expect(html).toMatch(/\.run-wrap\{[^}]*flex:\s*1 0 100%/);
+  });
+
   it('rebalances the editor to a usable height on narrow screens', () => {
     // Mobile gives the editor a floor so it is not a thin strip under a huge
     // output pane.
