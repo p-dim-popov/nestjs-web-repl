@@ -11,6 +11,7 @@ import {
   Param,
   Post,
   Sse,
+  StreamableFile,
   type MessageEvent,
 } from '@nestjs/common';
 import { map, type Observable } from 'rxjs';
@@ -19,6 +20,7 @@ import type { WebReplModuleOptions } from './interfaces/web-repl-options.interfa
 import type { WebReplEvent } from './interfaces/web-repl-messages.interface';
 import { WebReplService } from './web-repl.service';
 import { renderReplUi } from './ui/repl-ui.html';
+import { resolveMonacoFile } from './ui/monaco-assets';
 
 // IMPORTANT 2: the heartbeat is emitted as a real WebReplEvent with the
 // sentinel `id: 0`. Per the SSE spec, any non-null `id` field (including
@@ -99,5 +101,17 @@ export class WebReplController {
   ui(@Param('channel') channel: string): string {
     if (!this.options.enabled) throw new NotFoundException();
     return renderReplUi(channel);
+  }
+
+  // Serves the bundled Monaco editor from our own origin so the UI needs no
+  // CDN. The Express 5 splat param arrives as a string[] of path segments;
+  // resolveMonacoFile applies the traversal guard and returns null (-> 404)
+  // for any escape or miss.
+  @Get(':channel/vs/*path')
+  vsAsset(@Param('path') segments: string[]): StreamableFile {
+    if (!this.options.enabled) throw new NotFoundException();
+    const asset = resolveMonacoFile(segments.join('/'));
+    if (!asset) throw new NotFoundException();
+    return new StreamableFile(asset.buffer, { type: asset.contentType });
   }
 }
