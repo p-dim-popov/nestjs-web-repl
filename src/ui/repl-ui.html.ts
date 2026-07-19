@@ -20,26 +20,37 @@ export function renderReplUi(channel: string): string {
 <title>REPL: ${safe}</title>
 <style>
   html,body{height:100%;margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;background:#1e1e1e;color:#ddd}
-  #app{display:flex;flex-direction:column;height:100vh}
+  #app{display:flex;flex-direction:column;height:100vh;height:100dvh}
   #out{flex:1;overflow:auto;padding:10px;white-space:pre-wrap;font-size:13px;line-height:1.4}
+  #out:empty::before{content:'Run a command to see output.';color:#666}
   #out .cmd{color:#4ec9b0}#out .sys{color:#888}#out .err{color:#f14c4c}
-  #editor{height:32%;border-top:1px solid #333}
-  #bar{display:flex;gap:12px;align-items:center;padding:6px 10px;background:#252526;font-size:12px;border-top:1px solid #333}
+  #editor{height:32%}
+  #bar{display:flex;gap:12px;align-items:center;padding:6px 10px;background:#252526;font-size:12px;border-top:1px solid #333;border-bottom:1px solid #333}
   #bar .dot{width:8px;height:8px;border-radius:50%;background:#666;display:inline-block;margin-right:4px}
   #bar .dot.on{background:#3fb950}
   button{background:#0e639c;color:#fff;border:0;padding:4px 12px;border-radius:3px;cursor:pointer}
+  @media (max-width:600px){
+    #bar{flex-wrap:wrap;gap:6px 12px;padding:8px 10px}
+    #bar>span{white-space:nowrap}
+    #owner{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+    .run-wrap{flex:1 0 100%}
+    #run{width:100%;min-height:44px;padding:10px 16px;font-size:15px;white-space:nowrap}
+    #run .kbd-hint{display:none}
+    #out{flex:1 1 0;min-height:96px}
+    #editor{height:auto;flex:1 1 0;min-height:200px}
+  }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="out"></div>
-  <div id="editor"></div>
   <div id="bar">
     <span><span id="dot" class="dot"></span><span id="state">connecting…</span></span>
     <span>channel: <b>${safe}</b></span>
     <span id="owner"></span>
-    <span style="margin-left:auto"><button id="run">Run ▶ (Ctrl+Enter)</button></span>
+    <span class="run-wrap" style="margin-left:auto"><button id="run">Run ▶ <span class="kbd-hint">(Ctrl+Enter)</span></button></span>
   </div>
+  <div id="editor"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
 <script>
