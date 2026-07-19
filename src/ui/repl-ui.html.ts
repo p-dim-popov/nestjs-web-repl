@@ -52,7 +52,7 @@ export function renderReplUi(channel: string): string {
   </div>
   <div id="editor"></div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
+<script src="vs/loader.js"></script>
 <script>
   const channel = ${channelLiteral};
   const channelPath = encodeURIComponent(channel);
@@ -108,7 +108,7 @@ export function renderReplUi(channel: string): string {
   };
 
   let editor;
-  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs' }});
+  require.config({ paths: { vs: new URL('vs', document.baseURI).href }});
   require(['vs/editor/editor.main'], function(){
     editor = monaco.editor.create(document.getElementById('editor'), {
       value: '', language: 'typescript', theme: 'vs-dark', minimap:{enabled:false}, automaticLayout:true

@@ -50,4 +50,17 @@ describe('renderReplUi', () => {
     expect(evil).not.toContain('</script><b>x');
     expect(evil).toContain('\\u003c');
   });
+
+  it('loads Monaco from the same origin, never a CDN', () => {
+    expect(html).not.toContain('cdn.jsdelivr.net');
+    expect(html).not.toContain('https://');
+  });
+
+  it('loads the Monaco loader from a relative vs path', () => {
+    expect(html).toContain('src="vs/loader.js"');
+  });
+
+  it('derives the require.config vs base from document.baseURI', () => {
+    expect(html).toMatch(/paths:\s*\{\s*vs:\s*new URL\('vs',\s*document\.baseURI\)\.href\s*\}/);
+  });
 });

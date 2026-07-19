@@ -60,6 +60,24 @@ describe('WebReplController', () => {
     expect(res.text.toLowerCase()).toContain('monaco');
   });
 
+  it('GET :channel/vs/loader.js serves Monaco as JavaScript', async () => {
+    const res = await request(app.getHttpServer()).get('/repl/chanA/vs/loader.js');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/javascript');
+    expect(res.text.length).toBeGreaterThan(0);
+  });
+
+  it('GET :channel/vs serves a nested asset path', async () => {
+    const res = await request(app.getHttpServer()).get('/repl/chanA/vs/base/worker/workerMain.js');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/javascript');
+  });
+
+  it('GET :channel/vs 404s on a traversal attempt', async () => {
+    const res = await request(app.getHttpServer()).get('/repl/chanA/vs/..%2f..%2fpackage.json');
+    expect(res.status).toBe(404);
+  });
+
   it('escapes </script> in the channel to prevent breakout', () => {
     const html = renderReplUi('</script><script>alert(1)</script>');
     expect(html).not.toContain('</script><script>alert(1)'); // not present unescaped in the script context
@@ -110,6 +128,11 @@ describe('WebReplController', () => {
         .set('Accept', 'text/event-stream');
       expect(res.status).toBe(404);
       expect(disabledSvc.stream).not.toHaveBeenCalled();
+    });
+
+    it('GET :channel/vs returns 404 when disabled', async () => {
+      const res = await request(disabledApp.getHttpServer()).get('/repl/x/vs/loader.js');
+      expect(res.status).toBe(404);
     });
   });
 
