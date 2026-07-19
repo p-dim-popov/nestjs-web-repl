@@ -1,3 +1,18 @@
+# [2.1.0](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.0.1...v2.1.0) (2026-07-19)
+
+
+### Bug Fixes
+
+* isolate handler faults in BaseRedisWebReplAdapter.dispatch ([4ea33b9](https://github.com/p-dim-popov/nestjs-web-repl/commit/4ea33b9dac8abfd34cd839098a5ee32a95c6ecbf))
+
+
+### Features
+
+* add BaseRedisWebReplAdapter pub/sub bridge ([cbab588](https://github.com/p-dim-popov/nestjs-web-repl/commit/cbab58853264b32f4dee48fce506495ca0f86f0f))
+* add IoRedisWebReplAdapter (ioredis) ([6acc601](https://github.com/p-dim-popov/nestjs-web-repl/commit/6acc60137a7bf4b41dbd0d38f874c14ae69049b8))
+* add NodeRedisWebReplAdapter (node-redis v4) ([d7434d5](https://github.com/p-dim-popov/nestjs-web-repl/commit/d7434d508d05f5a4ea4c6069e30e55246646e47b))
+* export Redis adapters from nestjs-web-repl/redis subpath ([399da8c](https://github.com/p-dim-popov/nestjs-web-repl/commit/399da8c07737523a682b475fbcd36e91567a1edb))
+
 ## [2.0.1](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.0.0...v2.0.1) (2026-07-18)
 
 # [2.0.0](https://github.com/p-dim-popov/nestjs-web-repl/compare/v1.1.0...v2.0.0) (2026-07-18)

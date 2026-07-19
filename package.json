@@ -1,16 +1,28 @@
 {
   "name": "nestjs-web-repl",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Expose a live NestJS REPL over the network (HTTP + SSE + Monaco UI).",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./redis": { "types": "./dist/redis.d.ts", "default": "./dist/redis.js" },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./redis": {
+      "types": "./dist/redis.d.ts",
+      "default": "./dist/redis.js"
+    },
     "./package.json": "./package.json"
   },
-  "typesVersions": { "*": { "redis": ["dist/redis.d.ts"] } },
+  "typesVersions": {
+    "*": {
+      "redis": [
+        "dist/redis.d.ts"
+      ]
+    }
+  },
   "bin": {
     "nestjs-web-repl": "dist/cli/index.js"
   },
@@ -46,8 +58,12 @@
     "redis": "^4 || ^5"
   },
   "peerDependenciesMeta": {
-    "ioredis": { "optional": true },
-    "redis": { "optional": true }
+    "ioredis": {
+      "optional": true
+    },
+    "redis": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@nestjs/common": "^11",
