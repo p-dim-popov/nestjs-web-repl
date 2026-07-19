@@ -1,6 +1,6 @@
 {
   "name": "nestjs-web-repl",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Expose a live NestJS REPL over the network (HTTP + SSE + Monaco UI).",
   "keywords": [
     "nestjs",
