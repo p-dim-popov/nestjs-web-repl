@@ -217,61 +217,55 @@ are distinct from, and not to be confused with, the client-visible `system`
 *SSE event type* documented under [Endpoints](#endpoints), which only ever
 carries `{ping}`/`{done}`/`{error}`).
 
-### Redis adapter sketch
+### Redis (multi-instance)
+
+Behind a load balancer the default in-memory adapter is per-process: a command
+posted to one replica never reaches a session owned by another. Supply a Redis
+adapter so every replica shares one pub/sub bus. Import it from the
+`nestjs-web-repl/redis` subpath and hand it one connected client — the adapter
+creates its own dedicated subscriber connection (Redis requires one for subscribe
+mode) and closes only that connection on shutdown; your client stays yours.
+
+**ioredis:**
 
 ```ts
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
-import type { WebReplAdapter } from 'nestjs-web-repl';
+import { WebReplModule } from 'nestjs-web-repl';
+import { IoRedisWebReplAdapter } from 'nestjs-web-repl/redis';
 
-@Injectable()
-export class RedisWebReplAdapter implements WebReplAdapter, OnModuleDestroy {
-  private readonly pub = new Redis(process.env.REDIS_URL);
-  private readonly sub = new Redis(process.env.REDIS_URL);
-
-  async publish(topic: string, message: string): Promise<void> {
-    await this.pub.publish(topic, message);
-  }
-
-  async subscribe(topic: string, handler: (message: string) => void): Promise<void> {
-    await this.sub.subscribe(topic);
-    this.sub.on('message', (channel, message) => {
-      if (channel === topic) handler(message);
-    });
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.pub.quit();
-    await this.sub.quit();
-  }
-}
+WebReplModule.register({
+  enabled: process.env.REPL_ENABLED === 'true',
+  adapter: new IoRedisWebReplAdapter(new Redis(process.env.REDIS_URL!)),
+});
 ```
 
+**node-redis:**
+
 ```ts
-// as a ready-made instance
-WebReplModule.register({
-  enabled: process.env.REPL_ENABLED === 'true',
-  adapter: new RedisWebReplAdapter(),
-  instanceId: process.env.HOSTNAME, // shows up in `command` SSE events and
-                                     // internal webrepl:sys claim messages
-});
+import { createClient } from 'redis';
+import { WebReplModule } from 'nestjs-web-repl';
+import { NodeRedisWebReplAdapter } from 'nestjs-web-repl/redis';
 
-// or let Nest construct it (and its dependencies) for you
-WebReplModule.register({
-  enabled: process.env.REPL_ENABLED === 'true',
-  adapter: { useClass: RedisWebReplAdapter, imports: [RedisModule] },
-});
-
-// or build it with a factory
 WebReplModule.register({
   enabled: process.env.REPL_ENABLED === 'true',
   adapter: {
-    useFactory: (redis: RedisService) => new RedisWebReplAdapter(redis),
-    inject: [RedisService],
-    imports: [RedisModule],
+    useFactory: async () => {
+      const client = createClient({ url: process.env.REDIS_URL });
+      await client.connect();
+      return new NodeRedisWebReplAdapter(client);
+    },
   },
 });
 ```
+
+`ioredis` and `redis` are optional peer dependencies — install whichever you use.
+Both adapters wrap a small shared base; to target another broker, subclass
+`BaseRedisWebReplAdapter` or implement `WebReplAdapter` directly.
+
+The `adapter` extra also accepts a DI-configured provider — `{ useClass, imports? }`
+or `{ useFactory, inject?, imports? }` — so a custom adapter can pull its own
+dependencies (a shared client, a config service) from a Nest module. See the
+[extras table](#options-webreplmoduleoptions) below.
 
 ## Options (`WebReplModuleOptions`)
 
@@ -389,10 +383,11 @@ We tell you this because the honest thing to do is let you judge the code on
 its merits rather than guess at its origins. If you are skeptical of AI-written
 code, here is what to actually look at:
 
-- **The tests.** 83 automated tests, including a two-instance end-to-end test
+- **The tests.** 100 automated tests, including a two-instance end-to-end test
   that proves cross-instance command routing and output fan-out, and an
   execution-proof test that resolves a real provider through the live REPL
-  context. `npm test`, `npm run build`, and `npx tsc --noEmit` are all green.
+  context. `npm test`, `npm run build`, and `npx tsc -p tsconfig.build.json
+  --noEmit` are all green.
 - **The commit history.** The real TDD trail is preserved — failing test,
   implementation, fixes — including several rounds where review caught genuine
   defects (the trickiest: `node:repl` completion detection on modern Node, and

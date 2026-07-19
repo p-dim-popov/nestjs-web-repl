@@ -89,13 +89,14 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
   `@UseGuards(...)`, and pass it as `controller:` to `register`/`registerAsync`.
   See "Securing it" in the package README.
 - **Multiple app instances** (load-balanced replicas): the default in-memory
-  adapter is per-process; supply a shared adapter via the `adapter` extra
-  (a ready instance, `{ useClass, imports }`, or `{ useFactory, inject, imports }`)
-  so a command and its output reach the owning instance. See "Adapter /
-  multi-instance" in the package README.
-- **Custom adapter:** implement the adapter interface (publish/subscribe over
-  the message topics) and pass it via the `adapter` extra. See "Adapter /
-  multi-instance" in the README.
+  adapter is per-process. For Redis, import a ready-made adapter from the
+  `nestjs-web-repl/redis` subpath — `IoRedisWebReplAdapter` (ioredis) or
+  `NodeRedisWebReplAdapter` (node-redis) — and pass it as the `adapter` extra in
+  the same `register` call:
+  `register({ enabled, adapter: new IoRedisWebReplAdapter(client) })`. Hand it
+  one connected client; it owns its own subscriber connection. For any other
+  broker, supply a custom adapter (a ready instance, `{ useClass, imports }`, or
+  `{ useFactory, inject, imports }`). See "Adapter / multi-instance" in the README.
 - **Options** (base path, TTLs, heartbeats) and **exported symbols:** see
   "Options" and "Exports" in the README.
 - **Runnable example gotcha:** run examples with `ts-node`, not `tsx` —
