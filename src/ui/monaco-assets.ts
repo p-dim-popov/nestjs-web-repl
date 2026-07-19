@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, normalize, sep } from 'node:path';
+import { dirname, extname, join, normalize, sep } from 'node:path';
 
 // Resolve Monaco's `min/vs` directory. In a published install the build
 // step (scripts/copy-monaco.mjs) copied it next to this compiled module at
@@ -37,8 +37,7 @@ export function resolveMonacoFile(relPath: string): MonacoAsset | null {
   const full = normalize(join(root, relPath));
   if (full !== root && !full.startsWith(root + sep)) return null;
   if (!existsSync(full) || !statSync(full).isFile()) return null;
-  const dot = full.lastIndexOf('.');
-  const ext = dot >= 0 ? full.slice(dot).toLowerCase() : '';
+  const ext = extname(full).toLowerCase();
   return {
     buffer: readFileSync(full),
     contentType: MIME_BY_EXT[ext] ?? 'application/octet-stream',
