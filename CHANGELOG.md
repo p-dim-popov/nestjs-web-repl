@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.1.3...v2.2.0) (2026-07-19)
+
+
+### Features
+
+* self-host the Monaco editor instead of loading it from a CDN ([#11](https://github.com/p-dim-popov/nestjs-web-repl/issues/11)) ([8e8466d](https://github.com/p-dim-popov/nestjs-web-repl/commit/8e8466d67e54f720ad61d0ff50cd9b22dad763b1))
+
 ## [2.1.3](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.1.2...v2.1.3) (2026-07-19)
 
 
