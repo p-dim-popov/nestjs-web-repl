@@ -26,6 +26,10 @@ running server.
 npm install nestjs-web-repl
 ```
 
+> **Upgrading from 1.x?** The `forRoot`/`forRootAsync` API is deprecated. v2 uses
+> `register`/`registerAsync` — see [Quick start](#quick-start) and
+> [Securing it](#securing-it).
+
 ## Quick start
 
 ```ts
@@ -157,6 +161,22 @@ WebReplModule.registerAsync({
 });
 ```
 
+### How the browser UI authenticates
+
+Your guard runs in front of all three routes — the UI page, the SSE stream, and
+the command POST. The bundled UI sends only what a browser attaches
+automatically on a **same-origin** request: **cookies**. It sets no
+`Authorization` header, and the SSE stream uses `EventSource`, which cannot send
+custom headers at all. So protect these routes with **cookie/session** auth (or a
+network-level control such as an IP allowlist, mTLS, or a VPN). A
+bearer-token / `Authorization`-header guard rejects the UI — it still works for
+direct `curl` clients, where you set the header yourself, but the browser cannot.
+
+The UI is served from the same origin it calls, so a logged-in session cookie
+rides along on the page load, the SSE connection, and every command. One caveat:
+the UI sends no CSRF token, so authenticate off the session itself rather than
+requiring a CSRF token on these routes.
+
 ## Adapter / multi-instance
 
 If you run more than one instance of your app (multiple processes, pods,
@@ -188,10 +208,10 @@ solves this with an **ownership + fan-out** protocol:
   never preempted this way. Takeover loses that channel's in-memory
   variables (the dead owner's session is gone) but restores availability
   instead of leaving the channel wedged fleet-wide (see
-  [Limitations](#limitations-v1)).
+  [Limitations](#limitations)).
 - Because ownership is decided by whichever instance's `onCmd` handler runs
   first, two instances racing to claim the same brand-new channel at the
-  same instant resolve **last-claim-wins** (see [Limitations](#limitations-v1)).
+  same instant resolve **last-claim-wins** (see [Limitations](#limitations)).
 
 By default this coordination happens via `InMemoryWebReplAdapter`, which only
 works within a single process (fine for local dev / single-instance
@@ -299,27 +319,6 @@ and `WEB_REPL_OPTIONS` (the DI token for the resolved options, useful when
 injecting them into a sibling-registered controller subclass), plus the types
 `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleExtras`,
 `WebReplAdapterConfig`, `WebReplEvent`, `SseEventType`.
-
-## Migrating from 1.x → 2.0
-
-- `WebReplModule.forRoot(...)` → `WebReplModule.register(...)`.
-- `WebReplModule.forRootAsync(...)` → `WebReplModule.registerAsync(...)`.
-- `adapter` is no longer an option resolved by `useFactory`; it's a static
-  "extra" passed alongside the options (or alongside `useFactory`/`inject` for
-  the async form), and now also accepts `{ useClass, imports? }` or
-  `{ useFactory, inject?, imports? }` in addition to a ready instance — see
-  [Adapter / multi-instance](#adapter--multi-instance).
-- `registerController: false` is gone. To run your own guarded controller
-  instead of the default, subclass `WebReplController`, add `@UseGuards(...)`,
-  and pass it as the `controller` extra to `register`/`registerAsync` — see
-  [Securing it](#securing-it). Unlike the old `registerController` flag, this
-  works identically for both the sync and async form.
-- A disabled module (`enabled: false`) now still registers the
-  controller/service, but every route 404s and the module never subscribes to
-  the adapter — it no longer silently registers nothing. If you were relying
-  on a disabled module contributing zero routes/providers to the Nest module
-  graph, that is no longer the case.
-
 ## AI skill
 
 This package ships a [Claude Code](https://claude.com/claude-code) skill that
@@ -335,7 +334,7 @@ agent picks it up on its next session. The command never clobbers a modified
 skill file silently — if you have edited it, re-run with `--force` to refresh it
 after upgrading the package.
 
-## Limitations (v1)
+## Limitations
 
 - **Monaco loads from a CDN** (`cdn.jsdelivr.net`) inside the `/ui` page — the
   *browser* needs internet access to load the editor; the server side has no
@@ -383,11 +382,10 @@ We tell you this because the honest thing to do is let you judge the code on
 its merits rather than guess at its origins. If you are skeptical of AI-written
 code, here is what to actually look at:
 
-- **The tests.** 100 automated tests, including a two-instance end-to-end test
-  that proves cross-instance command routing and output fan-out, and an
+- **The tests.** A thorough automated suite, including a two-instance end-to-end
+  test that proves cross-instance command routing and output fan-out, and an
   execution-proof test that resolves a real provider through the live REPL
-  context. `npm test`, `npm run build`, and `npx tsc -p tsconfig.build.json
-  --noEmit` are all green.
+  context. `npm test`, `npm run build`, and the typecheck all run green in CI.
 - **The commit history.** The real TDD trail is preserved — failing test,
   implementation, fixes — including several rounds where review caught genuine
   defects (the trickiest: `node:repl` completion detection on modern Node, and
@@ -399,78 +397,18 @@ code, here is what to actually look at:
 
 AI assistance does not exempt the code from scrutiny — it raises the bar for
 it. Issues and fixes are welcome from anyone who finds something we missed.
-
-## AI usage & training
-
-The source here is published so people and their tools can **use** it — read
-it, run it, debug against it, integrate it. It is not offered as training data.
-[`robots.txt`](./robots.txt) and [`ai.txt`](./ai.txt) record a request that AI
-model *training* crawlers (GPTBot, ClaudeBot, CCBot, Google-Extended, and
-others) not ingest this repository. Those files are advisory — they express
-intent and do not, and cannot, technically enforce anything, nor do they bind
-GitHub's own hosting. Using an AI coding assistant to help you *work with* this
-library is entirely fine and expected.
-
-## Releasing
-
-Releases are **fully automated**. Merging a PR to `main` with releasable
-[Conventional Commits](https://www.conventionalcommits.org/) triggers
-`.github/workflows/release.yml`, which runs the full test suite and then
-[semantic-release](https://semantic-release.gitbook.io/):
-
-| Commit type            | Version bump      |
-| ---------------------- | ----------------- |
-| `fix:`                 | patch (x.y.**z**) |
-| `feat:`                | minor (x.**y**.0) |
-| `feat!:` / `BREAKING CHANGE:` in body | major (**x**.0.0) |
-| `docs:` `chore:` `test:` `ci:` `refactor:` | no release |
-
-It computes the next version, updates `CHANGELOG.md`, publishes to npm
-(**tokenless via OIDC trusted publishing, with provenance attached
-automatically**), tags the commit, cuts a GitHub Release, and commits the
-version/changelog bump back to `main` as `chore(release): x.y.z [skip ci]`.
-Do not bump `version` in `package.json` by hand.
-
-### One-time bootstrap (maintainer, once)
-
-npm's OIDC trusted publishing cannot perform a package's *first* publish, so a
-maintainer does this once:
-
-1. **Create the package on npm with a placeholder:**
-   ```bash
-   npm login
-   npm version 0.0.0 --no-git-tag-version   # temp, do not commit
-   npm publish --access public
-   git checkout -- package.json               # restore working version
-   ```
-   Do **not** create a git tag for `0.0.0`; with no tags semantic-release's
-   first automated release is `1.0.0`.
-2. **Register the Trusted Publisher** at
-   `https://www.npmjs.com/package/nestjs-web-repl/access` → *Trusted Publishers*
-   → GitHub Actions: owner `p-dim-popov`, repository `nestjs-web-repl`, workflow
-   `release.yml` (leave environment blank). After this, no token is needed.
-3. (Optional, after `1.0.0` ships) `npm deprecate nestjs-web-repl@0.0.0 "placeholder"`.
-
-### Verifying the first real release
-
-After the bootstrap, the next merge to `main` containing a `feat:`/`fix:` commit
-should produce `1.0.0`. Confirm:
-
-- `npm view nestjs-web-repl version` → `1.0.0`
-- the npm package page shows a provenance / "Published via GitHub Actions" badge
-- a `v1.0.0` git tag and a matching GitHub Release with generated notes exist
-- `CHANGELOG.md` and a `chore(release): 1.0.0` commit are on `main`
-- the `release.yml` run is green
-
-If the publish step fails with an auth error, the Trusted Publisher registration
-(step 2) is missing or its repo/workflow fields don't match exactly.
-
 ## Contributing
 
 Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). AI-
 assisted PRs are fine; we just ask you to disclose the assistance and to
 understand what you submit. Agents working in this repo should start with
 [`AGENTS.md`](./AGENTS.md).
+
+PRs merge as a single squash commit whose message is the **PR title and
+description**, and that commit drives an automated release. Write the PR title as
+a [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
+`docs:`, …) so the version bump is correct; put any `BREAKING CHANGE:` note in the
+description.
 
 ## License
 
