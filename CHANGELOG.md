@@ -1,3 +1,10 @@
+## [2.1.3](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.1.2...v2.1.3) (2026-07-19)
+
+
+### Bug Fixes
+
+* make the mobile REPL UI usable (on-screen bar, balanced split, no cramming) ([#10](https://github.com/p-dim-popov/nestjs-web-repl/issues/10)) ([813b6ce](https://github.com/p-dim-popov/nestjs-web-repl/commit/813b6ce1b1657b16862da959c499ba4a2671e5b7))
+
 ## [2.1.2](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.1.1...v2.1.2) (2026-07-19)
 
 ## [2.1.1](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.1.0...v2.1.1) (2026-07-19)
