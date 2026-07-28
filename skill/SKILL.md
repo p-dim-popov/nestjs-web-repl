@@ -63,7 +63,7 @@ WebReplModule.registerAsync({
 
 ## Use it
 
-These routes are registered (default base path `repl`), keyed by a channel name:
+These routes are registered (default base path `repl`); all but the first are keyed by a channel name:
 
 | Route | Purpose |
 | --- | --- |

@@ -218,6 +218,10 @@ describe('WebReplController', () => {
     it('drops the query string', () => {
       expect(landingRedirectUrl('/repl?foo=1', 'k3f9x2ab')).toBe('/repl/k3f9x2ab/ui');
     });
+
+    it('strips the query string before the trailing slash', () => {
+      expect(landingRedirectUrl('/repl/?foo=1', 'k3f9x2ab')).toBe('/repl/k3f9x2ab/ui');
+    });
   });
 
   it('end-to-end: heartbeats repeat the last real event id instead of clobbering it', async () => {

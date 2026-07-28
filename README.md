@@ -183,7 +183,7 @@ WebReplModule.registerAsync({
 ### How the browser UI authenticates
 
 Your guard runs in front of every route — the UI page, the SSE stream, the
-command POST, and the Monaco assets. The bundled UI sends only what a browser attaches
+command POST, the Monaco assets, and the landing redirect. The bundled UI sends only what a browser attaches
 automatically on a **same-origin** request: **cookies**, and **HTTP auth
 credentials** collected through a `WWW-Authenticate` challenge. It sets no
 `Authorization` header of its own, and the SSE stream uses `EventSource`, which
