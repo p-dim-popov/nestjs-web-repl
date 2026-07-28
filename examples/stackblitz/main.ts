@@ -7,6 +7,6 @@ async function bootstrap() {
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
   // eslint-disable-next-line no-console
-  console.log(`nestjs-web-repl demo on :${port} — open /repl/dev/ui`);
+  console.log(`nestjs-web-repl demo on :${port} — open /repl`);
 }
 void bootstrap();
