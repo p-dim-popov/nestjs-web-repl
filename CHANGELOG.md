@@ -1,3 +1,10 @@
+# [2.3.0](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.2.2...v2.3.0) (2026-07-28)
+
+
+### Features
+
+* redirect bare /repl to a random channel's UI ([#14](https://github.com/p-dim-popov/nestjs-web-repl/issues/14)) ([2c0c1ef](https://github.com/p-dim-popov/nestjs-web-repl/commit/2c0c1ef25f5bce92ba51be37a7ac16faa11e804d))
+
 ## [2.2.2](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.2.1...v2.2.2) (2026-07-28)
 
 ## [2.2.1](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.2.0...v2.2.1) (2026-07-19)
