@@ -10,6 +10,8 @@ import {
   NotFoundException,
   Param,
   Post,
+  Redirect,
+  Req,
   Sse,
   StreamableFile,
   type MessageEvent,
@@ -75,6 +77,17 @@ export class WebReplController {
     protected readonly service: WebReplService,
     @Inject(WEB_REPL_OPTIONS) private readonly options: WebReplModuleOptions,
   ) {}
+
+  // Landing route: a visit with no channel gets a random one. Runs on this
+  // controller deliberately -- the documented security story is "subclass
+  // the controller, add your guard", so guard subclasses cover this route
+  // with no changes.
+  @Get()
+  @Redirect()
+  landing(@Req() req: { url: string }): { url: string; statusCode: number } {
+    if (!this.options.enabled) throw new NotFoundException();
+    return { url: landingRedirectUrl(req.url, randomChannelName()), statusCode: 302 };
+  }
 
   @Post(':channel')
   @HttpCode(202)

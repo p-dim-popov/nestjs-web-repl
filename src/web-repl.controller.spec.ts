@@ -83,6 +83,18 @@ describe('WebReplController', () => {
     expect(html).not.toContain('</script><script>alert(1)'); // not present unescaped in the script context
   });
 
+  it('GET /repl (no channel) redirects to a random channel UI', async () => {
+    const res = await request(app.getHttpServer()).get('/repl');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/^\/repl\/[a-z0-9]{8}\/ui$/);
+  });
+
+  it('GET /repl generates a fresh channel per visit', async () => {
+    const a = await request(app.getHttpServer()).get('/repl');
+    const b = await request(app.getHttpServer()).get('/repl');
+    expect(a.headers.location).not.toBe(b.headers.location);
+  });
+
   // CRITICAL 1: register()/registerAsync() always register this controller
   // regardless of the resolved `enabled` value, so the controller itself
   // must re-check `enabled` on every route and 404 -- rather than trusting
@@ -132,6 +144,11 @@ describe('WebReplController', () => {
 
     it('GET :channel/vs returns 404 when disabled', async () => {
       const res = await request(disabledApp.getHttpServer()).get('/repl/x/vs/loader.js');
+      expect(res.status).toBe(404);
+    });
+
+    it('GET /repl (landing) returns 404 when disabled', async () => {
+      const res = await request(disabledApp.getHttpServer()).get('/repl');
       expect(res.status).toBe(404);
     });
   });
