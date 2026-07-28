@@ -180,17 +180,26 @@ WebReplModule.registerAsync({
 
 Your guard runs in front of every route — the UI page, the SSE stream, the
 command POST, and the Monaco assets. The bundled UI sends only what a browser attaches
-automatically on a **same-origin** request: **cookies**. It sets no
-`Authorization` header, and the SSE stream uses `EventSource`, which cannot send
-custom headers at all. So protect these routes with **cookie/session** auth (or a
-network-level control such as an IP allowlist, mTLS, or a VPN). A
-bearer-token / `Authorization`-header guard rejects the UI — it still works for
-direct `curl` clients, where you set the header yourself, but the browser cannot.
+automatically on a **same-origin** request: **cookies**, and **HTTP auth
+credentials** collected through a `WWW-Authenticate` challenge. It sets no
+`Authorization` header of its own, and the SSE stream uses `EventSource`, which
+cannot send custom headers at all. That leaves three workable protections:
 
-The UI is served from the same origin it calls, so a logged-in session cookie
-rides along on the page load, the SSE connection, and every command. One caveat:
-the UI sends no CSRF token, so authenticate off the session itself rather than
-requiring a CSRF token on these routes.
+- **Cookie/session auth.** The UI is served from the same origin it calls, so
+  a logged-in session cookie rides along on the page load, the SSE connection,
+  and every command. One caveat: the UI sends no CSRF token, so authenticate
+  off the session itself rather than requiring a CSRF token on these routes.
+- **HTTP Basic auth.** Have the guard respond `401` with a
+  `WWW-Authenticate: Basic realm="repl"` header; the browser prompts for
+  credentials once, then attaches `Authorization: Basic ...` itself on every
+  subsequent request, including the `EventSource` connection. In Nest, set
+  that header on the response explicitly — throwing `UnauthorizedException`
+  alone does not send it, and without it the browser never prompts.
+- **A network-level control** — an IP allowlist, mTLS, or a VPN.
+
+A bearer-token guard rejects the UI, because the browser has no way to produce
+the token. It still works for direct `curl` clients, where you set the header
+yourself.
 
 ## Adapter / multi-instance
 
