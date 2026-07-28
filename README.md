@@ -26,6 +26,8 @@ running server.
 npm install nestjs-web-repl
 ```
 
+Requires Node 20+ and NestJS 10 or 11.
+
 > **Upgrading from 1.x?** The `forRoot`/`forRootAsync` API is deprecated. v2 uses
 > `register`/`registerAsync` — see [Quick start](#quick-start) and
 > [Securing it](#securing-it).
@@ -113,6 +115,11 @@ and is how multiple people/tabs can share or separate REPL state.
 - **`GET /repl/:channel/ui`** — an HTML page: an output pane fed by the SSE
   stream above, plus a Monaco editor for composing/sending commands
   (`Ctrl+Enter` or the Run button posts to the endpoint above).
+- **`GET /repl/:channel/vs/*`** — the Monaco editor's own files. The package
+  bundles them and your app serves them, so the browser needs no internet
+  access. The UI page loads the editor from this path; a proxy or path
+  allowlist in front of the app must let it through, or the editor will not
+  load.
 
 ### Try it with curl
 
@@ -171,8 +178,8 @@ WebReplModule.registerAsync({
 
 ### How the browser UI authenticates
 
-Your guard runs in front of all three routes — the UI page, the SSE stream, and
-the command POST. The bundled UI sends only what a browser attaches
+Your guard runs in front of every route — the UI page, the SSE stream, the
+command POST, and the Monaco assets. The bundled UI sends only what a browser attaches
 automatically on a **same-origin** request: **cookies**. It sets no
 `Authorization` header, and the SSE stream uses `EventSource`, which cannot send
 custom headers at all. So protect these routes with **cookie/session** auth (or a
@@ -327,6 +334,7 @@ and `WEB_REPL_OPTIONS` (the DI token for the resolved options, useful when
 injecting them into a sibling-registered controller subclass), plus the types
 `WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleExtras`,
 `WebReplAdapterConfig`, `WebReplEvent`, `SseEventType`.
+
 ## AI skill
 
 This package ships a [Claude Code](https://claude.com/claude-code) skill that
@@ -344,9 +352,6 @@ after upgrading the package.
 
 ## Limitations
 
-- **Monaco loads from a CDN** (`cdn.jsdelivr.net`) inside the `/ui` page — the
-  *browser* needs internet access to load the editor; the server side has no
-  such dependency.
 - **No autocomplete / IntelliSense** against your actual providers — Monaco
   is configured for plain TypeScript syntax highlighting only, not a live
   language service.
@@ -405,6 +410,7 @@ code, here is what to actually look at:
 
 AI assistance does not exempt the code from scrutiny — it raises the bar for
 it. Issues and fixes are welcome from anyone who finds something we missed.
+
 ## Contributing
 
 Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). AI-
