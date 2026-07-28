@@ -32,9 +32,9 @@ consider a change complete.
   (a heartbeat-renewed lease — see "Owner-liveness lease" below), per-channel
   serialized execution, output fan-out, SSE replay, TTL + channel GC,
   heartbeat, runtime `enabled` enforcement.
-- `src/web-repl.controller.ts` — the three HTTP routes; SSE mapping; runtime
+- `src/web-repl.controller.ts` — the HTTP routes; SSE mapping; runtime
   `enabled` guards; reflected-XSS-safe UI rendering.
-- `src/ui/repl-ui.html.ts` — the inlined browser UI (Monaco from CDN).
+- `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
 - `src/web-repl.module.ts` + `src/web-repl.module-definition.ts` — `register` /
   `registerAsync` (ConfigurableModuleBuilder).
 - `src/context/build-repl-context.ts` — builds the app-wide REPL context.

@@ -63,13 +63,15 @@ WebReplModule.registerAsync({
 
 ## Use it
 
-Three routes are registered (default base path `repl`), keyed by a channel name:
+These routes are registered (default base path `repl`); all but the first are keyed by a channel name:
 
 | Route | Purpose |
-|---|---|
+| --- | --- |
+| `GET repl` | Redirects (302) to a randomly named channel's UI. |
 | `POST repl/{channel}` | Send a line of code to execute. |
 | `GET repl/{channel}` | Server-Sent Events stream of output for the channel. |
 | `GET repl/{channel}/ui` | Monaco editor + terminal browser UI. |
+| `GET repl/{channel}/vs/*` | Self-hosted Monaco editor assets (used by the UI). |
 
 ```bash
 # stream output (leave running in one terminal)

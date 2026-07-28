@@ -85,11 +85,15 @@ get(CatService).findAll()
 
 ## Endpoints
 
-Every endpoint is namespaced under a `:channel` path segment. A channel is an
+Every endpoint except the bare `/repl` landing redirect is namespaced under a `:channel` path segment. A channel is an
 arbitrary string you choose (`dev`, `prod-debug`, your username — whatever); each
 channel gets its own isolated REPL session (its own variables, its own history),
 and is how multiple people/tabs can share or separate REPL state.
 
+- **`GET /repl`** — no channel: generates a random 8-character channel name
+  and redirects (`302`) to that channel's UI. The name is not a secret — it
+  only keeps two visitors from colliding by default; your guard remains the
+  only access control.
 - **`POST /repl/:channel`** — body `{ "command": "get(CatService).findAll()" }`.
   Dispatches the command for execution and returns immediately:
   `202 { "accepted": true, "commandId": "cmd_..." }`. The actual result arrives
@@ -179,7 +183,7 @@ WebReplModule.registerAsync({
 ### How the browser UI authenticates
 
 Your guard runs in front of every route — the UI page, the SSE stream, the
-command POST, and the Monaco assets. The bundled UI sends only what a browser attaches
+command POST, the Monaco assets, and the landing redirect. The bundled UI sends only what a browser attaches
 automatically on a **same-origin** request: **cookies**, and **HTTP auth
 credentials** collected through a `WWW-Authenticate` challenge. It sets no
 `Authorization` header of its own, and the SSE stream uses `EventSource`, which
