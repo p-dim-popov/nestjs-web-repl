@@ -90,6 +90,10 @@ arbitrary string you choose (`dev`, `prod-debug`, your username — whatever); e
 channel gets its own isolated REPL session (its own variables, its own history),
 and is how multiple people/tabs can share or separate REPL state.
 
+- **`GET /repl`** — no channel: generates a random 8-character channel name
+  and redirects (`302`) to that channel's UI. The name is not a secret — it
+  only keeps two visitors from colliding by default; your guard remains the
+  only access control.
 - **`POST /repl/:channel`** — body `{ "command": "get(CatService).findAll()" }`.
   Dispatches the command for execution and returns immediately:
   `202 { "accepted": true, "commandId": "cmd_..." }`. The actual result arrives
