@@ -85,7 +85,7 @@ get(CatService).findAll()
 
 ## Endpoints
 
-Every endpoint is namespaced under a `:channel` path segment. A channel is an
+Every endpoint except the bare `/repl` landing redirect is namespaced under a `:channel` path segment. A channel is an
 arbitrary string you choose (`dev`, `prod-debug`, your username — whatever); each
 channel gets its own isolated REPL session (its own variables, its own history),
 and is how multiple people/tabs can share or separate REPL state.
