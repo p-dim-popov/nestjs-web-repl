@@ -1,3 +1,5 @@
+## [2.3.1](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.3.0...v2.3.1) (2026-08-17)
+
 # [2.3.0](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.2.2...v2.3.0) (2026-07-28)
 
 
