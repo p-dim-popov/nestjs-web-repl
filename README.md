@@ -1,24 +1,18 @@
 # nestjs-web-repl
 
-Expose a live NestJS REPL over HTTP — command intake, an SSE output stream, and a
-Monaco-based browser UI. Under the hood it drives a real `node:repl` session wired
-into your app's Nest DI container, the same way `nest start --entrypoint repl` does,
-so `get(SomeService)`, `resolve(...)`, `select(...)`, and friends all work exactly as
-they do in the local REPL — except reachable over HTTP, from anywhere, against a
-running server.
+Expose a live NestJS REPL over HTTP. The module gives you a command endpoint, an
+SSE output stream, and a Monaco-based browser UI. It drives a real `node:repl`
+session that is connected to the Nest DI container of your app, in the same way as
+`nest start --entrypoint repl`. The helpers `get(SomeService)`, `resolve(...)`,
+`select(...)`, and the others work as they do in the local REPL. The difference is
+that you reach the REPL over HTTP, against a running server.
 
 > ## ⚠️ Security
 >
-> These endpoints run arbitrary code inside your app, with the full privileges of
-> your Node process. That's the whole point — it's a debugging tool — and it's
-> also the risk: anyone who can reach an enabled endpoint can run anything your
-> app can.
->
-> The module ships no authentication of its own; `enabled` is an on/off switch,
-> not a lock. Control access yourself: gate `enabled` behind an environment
-> variable and put your own guard in front of the routes ([Securing it](#securing-it)).
->
-> Guarded and on a trusted network, it's a safe way to inspect a running app.
+> This module runs code inside your app with the full privileges of the Node
+> process. It ships no authentication. `enabled` is an on/off switch, not a lock.
+> Gate `enabled` behind an environment variable and put your own guard in front of
+> the routes. See [Securing it](#securing-it).
 
 ## Install
 
@@ -26,19 +20,24 @@ running server.
 npm install nestjs-web-repl
 ```
 
-Requires Node 20+ and NestJS 10 or 11.
+The module requires Node 20+ and NestJS 10 or 11.
 
 > **Upgrading from 1.x?** The `forRoot`/`forRootAsync` API is deprecated. v2 uses
-> `register`/`registerAsync` — see [Quick start](#quick-start) and
+> `register`/`registerAsync`. See [Quick start](#quick-start) and
 > [Securing it](#securing-it).
 
 ## Live demo
 
-Try it without installing anything — this opens a full NestJS app running the REPL in an in-browser StackBlitz sandbox (the editor and everything else runs in your browser; nothing touches a shared server):
+You can try the REPL without an install. The link below opens a full NestJS app
+that runs the REPL in a StackBlitz sandbox. The editor and the app run in your
+browser. Nothing touches a shared server.
 
 [![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/p-dim-popov/nestjs-web-repl/tree/main/examples/stackblitz)
 
-First boot takes ~30–60s (dependency install + startup); after that the REPL is live. The [demo project](./examples/stackblitz) and its [command cheatsheet](./examples/stackblitz/TRY-THESE.md) live in `examples/stackblitz/`.
+The first boot takes about 30–60 seconds for the dependency install and startup.
+After that, the REPL is live. The [demo project](./examples/stackblitz) and its
+[command cheatsheet](./examples/stackblitz/TRY-THESE.md) are in
+`examples/stackblitz/`.
 
 ## Quick start
 
@@ -56,27 +55,27 @@ import { WebReplModule } from 'nestjs-web-repl';
 export class AppModule {}
 ```
 
-Boot the app with `REPL_ENABLED=true` and open `http://localhost:3000/repl/dev/ui`
-(`dev` here is just a channel name — see [Endpoints](#endpoints)). Type a command
-and press `Ctrl+Enter`. The REPL context is app-wide: `get(SomeProviderFromAnyModule)`
-resolves from the whole DI container, not just the module that imports
+Start the app with `REPL_ENABLED=true` and open `http://localhost:3000/repl/dev/ui`.
+Here `dev` is a channel name. See [Endpoints](#endpoints). Type a command and press
+`Ctrl+Enter`. The REPL context is app-wide. `get(SomeProviderFromAnyModule)`
+resolves from the whole DI container, not only from the module that imports
 `WebReplModule`.
 
-A runnable example lives in [`example/`](./example): `example/cat.service.ts`
-registers a trivial `CatService`, `example/app.module.ts` wires up
-`WebReplModule.register(...)`, and `example/main.ts` boots it. Run it with:
+A runnable example is in [`example/`](./example). `example/cat.service.ts`
+registers a small `CatService`. `example/app.module.ts` calls
+`WebReplModule.register(...)`. `example/main.ts` starts the app. Run it with:
 
 ```bash
 REPL_ENABLED=true PORT=3000 npx ts-node -T example/main.ts
 # or, from a checkout of this repo: REPL_ENABLED=true PORT=3000 npm run example
 ```
 
-> Use `ts-node` (not `tsx`/esbuild-based runners) to run TypeScript sources
-> directly: Nest's DI resolves constructor parameter types from
-> `emitDecoratorMetadata` output, and esbuild-based transpilers do not emit
-> it the way `tsc`/`ts-node` do, which breaks provider injection at runtime.
+> Use `ts-node` to run the TypeScript sources directly. Do not use `tsx` or other
+> esbuild-based runners. Nest DI reads constructor parameter types from
+> `emitDecoratorMetadata` output. Esbuild-based transpilers do not emit that output
+> in the same way as `tsc` and `ts-node`, so provider injection fails at runtime.
 
-then, in the UI (or via `curl`, see below), run:
+Then, in the UI or with `curl` (see below), run:
 
 ```ts
 get(CatService).findAll()
@@ -85,45 +84,44 @@ get(CatService).findAll()
 
 ## Endpoints
 
-Every endpoint except the bare `/repl` landing redirect is namespaced under a `:channel` path segment. A channel is an
-arbitrary string you choose (`dev`, `prod-debug`, your username — whatever); each
-channel gets its own isolated REPL session (its own variables, its own history),
-and is how multiple people/tabs can share or separate REPL state.
+Every endpoint except the bare `/repl` redirect has a `:channel` path segment. A
+channel is a string that you choose, for example `dev`, `prod-debug`, or your
+username. Each channel gets its own REPL session with its own variables and its own
+history. Channels are how multiple people or tabs share or separate REPL state.
 
-- **`GET /repl`** — no channel: generates a random 8-character channel name
-  and redirects (`302`) to that channel's UI. The name is not a secret — it
-  only keeps two visitors from colliding by default; your guard remains the
-  only access control.
+- **`GET /repl`** — no channel. The server generates a random 8-character channel
+  name and redirects (`302`) to the UI of that channel. The name is not a secret.
+  It only keeps two visitors from a collision by default. Your guard is the only
+  access control.
 - **`POST /repl/:channel`** — body `{ "command": "get(CatService).findAll()" }`.
-  Dispatches the command for execution and returns immediately:
-  `202 { "accepted": true, "commandId": "cmd_..." }`. The actual result arrives
-  asynchronously over the SSE stream below.
-- **`GET /repl/:channel`** — a Server-Sent-Events stream of what happens on that
-  channel. Supports `Last-Event-ID` for replay (a bounded ring buffer, default
-  200 events, backs each channel) so a reconnecting client doesn't miss output.
-  Each SSE message is JSON with `{ id, type, commandId, data }`, where `type` is
-  one of:
-  - **`command`** — echoes a dispatched command back out. `data` is
-    `{ command, instanceId }` (the instance that is about to run it).
-  - **`output`** — a chunk of REPL output. **`data` is the raw output string**
-    (not `{ chunk: ... }` — just the string itself), exactly as `node:repl`
-    wrote it (including `console.log` output and the inspected return value).
-  - **`system`** — control/status notices. `data` varies by shape:
-    - `{ ping: true }` — a heartbeat, `id: 0`, sent on `heartbeatInterval` (default
-      15s) purely to keep the connection alive. Not buffered for replay.
-    - `{ done: true }` — sent once after a command's output finishes, since
-      silent statements (`const v = 10`) produce no `output` events at all and
-      clients otherwise have no way to know a command has finished.
-    - `{ error: string }` — a command failed to execute (e.g. the REPL context
-      factory threw); the channel stays usable afterward.
-- **`GET /repl/:channel/ui`** — an HTML page: an output pane fed by the SSE
-  stream above, plus a Monaco editor for composing/sending commands
-  (`Ctrl+Enter` or the Run button posts to the endpoint above).
-- **`GET /repl/:channel/vs/*`** — the Monaco editor's own files. The package
-  bundles them and your app serves them, so the browser needs no internet
-  access. The UI page loads the editor from this path; a proxy or path
-  allowlist in front of the app must let it through, or the editor will not
-  load.
+  The server dispatches the command and returns at once:
+  `202 { "accepted": true, "commandId": "cmd_..." }`. The result arrives later over
+  the SSE stream below.
+- **`GET /repl/:channel`** — a Server-Sent-Events stream of the activity on that
+  channel. It supports `Last-Event-ID` for replay. A bounded ring buffer (default
+  200 events) backs each channel, so a client that reconnects does not miss output.
+  Each SSE message is JSON with `{ id, type, commandId, data }`. `type` is one of:
+  - **`command`** — echoes a dispatched command. `data` is
+    `{ command, instanceId }`, where `instanceId` is the instance that will run it.
+  - **`output`** — a chunk of REPL output. **`data` is the raw output string**, not
+    `{ chunk: ... }`. It is the exact text that `node:repl` wrote, which includes
+    `console.log` output and the inspected return value.
+  - **`system`** — control and status notices. `data` has one of these shapes:
+    - `{ ping: true }` — a heartbeat with `id: 0`, sent every `heartbeatInterval`
+      (default 15 s) to keep the connection alive. The buffer does not keep it for
+      replay.
+    - `{ done: true }` — sent once after the output of a command ends. Silent
+      statements such as `const v = 10` produce no `output` events. This event is
+      then the only signal that the command has finished.
+    - `{ error: string }` — a command did not execute, for example because the
+      REPL context factory threw. The channel stays usable after this.
+- **`GET /repl/:channel/ui`** — an HTML page with an output pane fed by the SSE
+  stream above, plus a Monaco editor to write and send commands. `Ctrl+Enter` or
+  the Run button posts to the endpoint above.
+- **`GET /repl/:channel/vs/*`** — the files of the Monaco editor. The package
+  bundles them and your app serves them, so the browser needs no internet access.
+  The UI page loads the editor from this path. A proxy or path allowlist in front
+  of the app must let this path through, or the editor does not load.
 
 ### Try it with curl
 
@@ -139,8 +137,8 @@ curl -X POST http://localhost:3000/repl/dev \
 
 ## Securing it
 
-Because the module ships no auth, the supported way to lock this down is to
-subclass the built-in controller, add your own guard, and pass it in via the
+The module ships no auth. The supported way to lock it down is to subclass the
+built-in controller, add your own guard, and pass the subclass through the
 `controller` extra:
 
 ```ts
@@ -165,9 +163,9 @@ class SecureReplController extends WebReplController {}
 export class AppModule {}
 ```
 
-`controller` is available to both `register` and `registerAsync` — it is a
-static, module-definition-time choice, so it's passed alongside `useFactory`/
-`inject` rather than resolved by it:
+`controller` is available in both `register` and `registerAsync`. It is a static
+choice made at module definition time, so you pass it next to
+`useFactory`/`inject`, not inside the factory result:
 
 ```ts
 WebReplModule.registerAsync({
@@ -182,71 +180,66 @@ WebReplModule.registerAsync({
 
 ### How the browser UI authenticates
 
-Your guard runs in front of every route — the UI page, the SSE stream, the
-command POST, the Monaco assets, and the landing redirect. The bundled UI sends only what a browser attaches
-automatically on a **same-origin** request: **cookies**, and **HTTP auth
-credentials** collected through a `WWW-Authenticate` challenge. It sets no
-`Authorization` header of its own, and the SSE stream uses `EventSource`, which
-cannot send custom headers at all. That leaves three workable protections:
+Your guard runs in front of every route: the UI page, the SSE stream, the command
+POST, the Monaco assets, and the redirect. The bundled UI sends only what a browser
+attaches on its own to a **same-origin** request. That is **cookies**, and
+**HTTP auth credentials** from a `WWW-Authenticate` challenge. It sets no
+`Authorization` header of its own. The SSE stream uses `EventSource`, which cannot
+send custom headers. This leaves three protections that work:
 
-- **Cookie/session auth.** The UI is served from the same origin it calls, so
-  a logged-in session cookie rides along on the page load, the SSE connection,
-  and every command. One caveat: the UI sends no CSRF token, so authenticate
-  off the session itself rather than requiring a CSRF token on these routes.
-- **HTTP Basic auth.** Have the guard respond `401` with a
-  `WWW-Authenticate: Basic realm="repl"` header; the browser prompts for
-  credentials once, then attaches `Authorization: Basic ...` itself on every
-  subsequent request, including the `EventSource` connection. In Nest, set
-  that header on the response explicitly — throwing `UnauthorizedException`
-  alone does not send it, and without it the browser never prompts.
-- **A network-level control** — an IP allowlist, mTLS, or a VPN.
+- **Cookie/session auth.** The UI is served from the same origin that it calls.
+  A session cookie therefore rides along on the page load, the SSE connection,
+  and every command. One caveat: the UI sends no CSRF token. Authenticate from the session
+  itself and do not require a CSRF token on these routes.
+- **HTTP Basic auth.** Make the guard respond `401` with a
+  `WWW-Authenticate: Basic realm="repl"` header. The browser asks for credentials
+  once, then attaches `Authorization: Basic ...` to every later request, which
+  includes the `EventSource` connection. In Nest, set that header on the response
+  explicitly. `UnauthorizedException` alone does not send it, and without it the
+  browser never asks.
+- **A network-level control.** An IP allowlist, mTLS, or a VPN.
 
-A bearer-token guard rejects the UI, because the browser has no way to produce
-the token. It still works for direct `curl` clients, where you set the header
-yourself.
+A bearer-token guard rejects the UI, because the browser cannot produce the token.
+It still works for direct `curl` clients, where you set the header yourself.
 
 ## Adapter / multi-instance
 
-If you run more than one instance of your app (multiple processes, pods,
-etc.), each instance would otherwise get its own isolated in-memory REPL —
-confusing if you dispatch a command from one browser tab and it lands on a
-different instance than the one holding your session's variables. Web-repl
-solves this with an **ownership + fan-out** protocol:
+If you run more than one instance of your app (multiple processes, pods, and so
+on), each instance would get its own in-memory REPL. A command from one browser
+tab can then land on one instance, while another instance holds the variables of
+your session. Web-repl solves this with an **ownership + fan-out** protocol:
 
-- The **first instance** to see a command for a given channel claims
-  ownership of that channel (broadcasting an internal `claim` message on the
-  `webrepl:sys` adapter topic — not a client-visible SSE event; see
-  [Endpoints](#endpoints)) and is the only instance that actually runs
-  commands on it from then on.
-- Every instance still receives and displays that channel's `output` events
-  (via fan-out), so any tab watching that channel's SSE stream sees the same
-  output regardless of which instance it's connected to.
-- A channel's ownership is released after `sessionTtl` (default 30 minutes)
-  of inactivity, freeing it to be re-claimed by whichever instance next
-  receives a command for it.
-- Ownership is also a **lease**: the owning instance re-announces `claim`
-  for every channel it owns every `ownerHeartbeatInterval` (default 10s). If
-  no claim/heartbeat has been seen for a channel's owner in `ownerLeaseTtl`
-  (default 30s) — because that instance crashed or was killed without a
-  clean shutdown — the channel is treated as effectively ownerless, and the
-  origin instance of the next command for it takes over. `ownerLeaseTtl` is
-  enforced to be at least `ownerHeartbeatInterval * 2` (clamped up with a
-  warning otherwise), so a live owner always has a full heartbeat interval
-  of slack against publish/delivery jitter — a live, heartbeating owner is
-  never preempted this way. Takeover loses that channel's in-memory
-  variables (the dead owner's session is gone) but restores availability
-  instead of leaving the channel wedged fleet-wide (see
-  [Limitations](#limitations)).
-- Because ownership is decided by whichever instance's `onCmd` handler runs
-  first, two instances racing to claim the same brand-new channel at the
-  same instant resolve **last-claim-wins** (see [Limitations](#limitations)).
+- The **first instance** to see a command for a channel claims ownership of that
+  channel. It broadcasts an internal `claim` message on the `webrepl:sys` adapter
+  topic. This is not a client-visible SSE event (see [Endpoints](#endpoints)).
+  From then on, only the owner runs commands on that channel.
+- Every instance still receives and shows the `output` events of that channel
+  through fan-out. Any tab that watches the SSE stream of that channel sees the
+  same output, no matter which instance it is connected to.
+- The ownership of a channel is released after `sessionTtl` (default 30 minutes)
+  without activity. The next instance that receives a command for it can then
+  claim it.
+- Ownership is also a **lease**. The owner re-announces `claim` for every channel
+  it owns every `ownerHeartbeatInterval` (default 10 s). If the owner of a channel sends no
+  claim or heartbeat within `ownerLeaseTtl` (default 30 s), the channel counts as
+  ownerless. A crash of that instance is one cause. The
+  origin instance of the next command for it takes over. The module enforces
+  `ownerLeaseTtl >= ownerHeartbeatInterval * 2` and clamps the value up with a
+  warning if it is lower. A live owner therefore always has a full heartbeat
+  interval of slack against publish or delivery jitter, and is never preempted
+  this way. A takeover loses the in-memory variables of that channel, because the
+  session of the dead owner is gone. It restores availability instead of a
+  channel that is stuck fleet-wide (see [Limitations](#limitations)).
+- Ownership goes to the instance whose `onCmd` handler runs first. If two
+  instances race to claim the same new channel at the same instant, the result is
+  **last-claim-wins** (see [Limitations](#limitations)).
 
-By default this coordination happens via `InMemoryWebReplAdapter`, which only
-works within a single process (fine for local dev / single-instance
-deployments). For real multi-instance deployments, provide your own adapter
-via the `adapter` extra — a ready instance, `{ useClass, imports }`, or
-`{ useFactory, inject, imports }` (all DI-capable, so the adapter can itself
-depend on other providers) — that implements:
+By default, this coordination uses `InMemoryWebReplAdapter`, which only works
+inside one process. That is fine for local development and single-instance
+deployments. For real multi-instance deployments, provide your own adapter through
+the `adapter` extra. Pass a ready instance, `{ useClass, imports }`, or
+`{ useFactory, inject, imports }`. All three forms are DI-capable, so the adapter
+can depend on other providers. The adapter implements:
 
 ```ts
 export interface WebReplAdapter {
@@ -256,23 +249,23 @@ export interface WebReplAdapter {
 }
 ```
 
-`message` is always a JSON string (already serialized by the library — your
-adapter just needs to move opaque strings around, not parse them). Three
-fixed topics are used: `webrepl:cmd`, `webrepl:out`, `webrepl:sys`. The
-`webrepl:sys` topic carries internal `claim`/`release` ownership-coordination
-messages between instances — these are never forwarded to SSE clients (they
-are distinct from, and not to be confused with, the client-visible `system`
-*SSE event type* documented under [Endpoints](#endpoints), which only ever
-carries `{ping}`/`{done}`/`{error}`).
+`message` is always a JSON string that the library has already serialized. Your
+adapter only moves opaque strings. It does not parse them. The library uses three
+fixed topics: `webrepl:cmd`, `webrepl:out`, `webrepl:sys`. The `webrepl:sys` topic
+carries internal `claim`/`release` ownership messages between instances. The
+library never forwards them to SSE clients. Do not confuse them with the
+client-visible `system` *SSE event type* under [Endpoints](#endpoints), which only
+carries `{ping}`, `{done}`, or `{error}`.
 
 ### Redis (multi-instance)
 
-Behind a load balancer the default in-memory adapter is per-process: a command
-posted to one replica never reaches a session owned by another. Supply a Redis
-adapter so every replica shares one pub/sub bus. Import it from the
-`nestjs-web-repl/redis` subpath and hand it one connected client — the adapter
-creates its own dedicated subscriber connection (Redis requires one for subscribe
-mode) and closes only that connection on shutdown; your client stays yours.
+Behind a load balancer, the default in-memory adapter is per-process. A command
+posted to one replica never reaches a session that another replica owns. Supply a
+Redis adapter so that every replica shares one pub/sub bus. Import it from the
+`nestjs-web-repl/redis` subpath and give it one connected client. The adapter
+creates its own subscriber connection, because Redis requires a dedicated
+connection for subscribe mode. On shutdown, it closes only that connection. Your
+client stays yours.
 
 **ioredis:**
 
@@ -306,31 +299,30 @@ WebReplModule.register({
 });
 ```
 
-`ioredis` and `redis` are optional peer dependencies — install whichever you use.
-Both adapters wrap a small shared base; to target another broker, subclass
+`ioredis` and `redis` are optional peer dependencies. Install the one that you use.
+Both adapters extend a small shared base. To target another broker, subclass
 `BaseRedisWebReplAdapter` or implement `WebReplAdapter` directly.
 
-The `adapter` extra also accepts a DI-configured provider — `{ useClass, imports? }`
-or `{ useFactory, inject?, imports? }` — so a custom adapter can pull its own
-dependencies (a shared client, a config service) from a Nest module. See the
-[extras table](#options-webreplmoduleoptions) below.
+The `adapter` extra also accepts a DI-configured provider, `{ useClass, imports? }`
+or `{ useFactory, inject?, imports? }`. A custom adapter can then get its own
+dependencies, such as a shared client or a config service, from a Nest module. See
+the [extras table](#options-webreplmoduleoptions) below.
 
 ## Options (`WebReplModuleOptions`)
 
 | Option              | Type             | Default                    | Notes                                              |
 | ------------------- | ---------------- | --------------------------- | --------------------------------------------------- |
-| `enabled`           | `boolean`        | *(required)*                | When `false`, routes 404 and the module does not subscribe to the adapter. |
-| `instanceId`        | `string`         | random `inst_xxxxxxxx`      | Shown in `command` SSE events and internal `webrepl:sys` claim/release messages. |
-| `sessionTtl`        | `number` (ms)    | `1_800_000` (30 min)        | Idle time before a channel's ownership is released. |
+| `enabled`           | `boolean`        | *(required)*                | When `false`, the routes return 404 and the module does not subscribe to the adapter. |
+| `instanceId`        | `string`         | random `inst_xxxxxxxx`      | Shown in `command` SSE events and in internal `webrepl:sys` claim/release messages. |
+| `sessionTtl`        | `number` (ms)    | `1_800_000` (30 min)        | Idle time before the module releases the ownership of a channel. |
 | `replayBufferSize`  | `number`         | `200`                       | Events kept per channel for SSE `Last-Event-ID` replay. |
-| `heartbeatInterval` | `number` (ms)    | `15_000`                    | SSE `system` `{ ping: true }` interval.             |
-| `ownerHeartbeatInterval` | `number` (ms) | `10_000`                | How often an instance re-announces `claim` for each channel it owns, keeping its ownership lease alive. |
-| `ownerLeaseTtl`     | `number` (ms)    | `30_000`                    | How long an ownership record is trusted since the last claim/heartbeat, before a stale owner's channel may be taken over. Enforced minimum `ownerHeartbeatInterval * 2` (a live owner always keeps a full heartbeat interval of slack against delivery jitter); if the configured value is below that, it's clamped up to `ownerHeartbeatInterval * 2` and a warning is logged (never throws). |
+| `heartbeatInterval` | `number` (ms)    | `15_000`                    | Interval of the SSE `system` `{ ping: true }` event. |
+| `ownerHeartbeatInterval` | `number` (ms) | `10_000`                | How often an instance re-announces `claim` for each channel it owns. This keeps its ownership lease alive. |
+| `ownerLeaseTtl`     | `number` (ms)    | `30_000`                    | How long an ownership record stays valid after the last claim or heartbeat. After that, another instance can take over the channel. The minimum is `ownerHeartbeatInterval * 2`. If the value is lower, the module clamps it up to that minimum and logs a warning. It never throws. |
 
-`register`/`registerAsync` also accept two "extras", passed alongside the
-options above (or alongside `useFactory`/`inject`/`imports` for the async
-form) rather than through them, since both are static, module-definition-time
-choices:
+`register`/`registerAsync` also accept two "extras". You pass them next to the
+options above, or next to `useFactory`/`inject`/`imports` for the async form, not
+inside them. Both are static choices made at module definition time:
 
 | Extra        | Type                  | Default              | Notes                                              |
 | ------------ | --------------------- | --------------------- | --------------------------------------------------- |
@@ -338,104 +330,100 @@ choices:
 | `adapter`    | `WebReplAdapter \| Type<WebReplAdapter> \| { useClass, imports? } \| { useFactory, inject?, imports? }` | `InMemoryWebReplAdapter` | Multi-instance coordination. See [Adapter / multi-instance](#adapter--multi-instance). |
 
 `WebReplModule.registerAsync({ useFactory, inject, imports, controller?, adapter? })`
-is also available for options that need DI (e.g. reading a `ConfigService`).
+is available for options that need DI, for example to read a `ConfigService`.
 
 ## Exports
 
 `WebReplModule`, `WebReplController`, `WebReplService`, `InMemoryWebReplAdapter`,
-and `WEB_REPL_OPTIONS` (the DI token for the resolved options, useful when
-injecting them into a sibling-registered controller subclass), plus the types
-`WebReplAdapter`, `WebReplModuleOptions`, `WebReplModuleExtras`,
-`WebReplAdapterConfig`, `WebReplEvent`, `SseEventType`.
+and `WEB_REPL_OPTIONS`. `WEB_REPL_OPTIONS` is the DI token for the resolved
+options. Use it to inject the options into a controller subclass that you register
+next to the module. The package also exports the types `WebReplAdapter`,
+`WebReplModuleOptions`, `WebReplModuleExtras`, `WebReplAdapterConfig`,
+`WebReplEvent`, and `SseEventType`.
 
 ## AI skill
 
 This package ships a [Claude Code](https://claude.com/claude-code) skill that
-teaches coding agents how to wire in and use the REPL safely. After installing
-the package, run:
+teaches coding agents how to install and use the REPL safely. After you install the
+package, run:
 
 ```bash
 npx nestjs-web-repl install-skill
 ```
 
-This writes `.claude/skills/nestjs-web-repl/SKILL.md` into your project; your
-agent picks it up on its next session. The command never clobbers a modified
-skill file silently — if you have edited it, re-run with `--force` to refresh it
-after upgrading the package.
+This writes `.claude/skills/nestjs-web-repl/SKILL.md` into your project. Your agent
+picks it up in its next session. The command never overwrites a modified skill file
+without a flag. If you have edited the file, run the command again with `--force`
+to refresh it after a package upgrade.
 
 ## Limitations
 
-- **No autocomplete / IntelliSense** against your actual providers — Monaco
-  is configured for plain TypeScript syntax highlighting only, not a live
-  language service.
-- **No session persistence.** REPL sessions (and their variables) live only
-  in process memory; a restart of the owning instance loses all channel
-  state, including the replay buffer.
-- **Ownership races are last-claim-wins.** If two instances receive the very
-  first command for a brand-new channel at nearly the same time, both may
-  briefly believe they own it; whichever internal `claim` message (on the
-  `webrepl:sys` adapter topic) is processed last by the group determines the
-  actual owner going forward. This is a narrow window (first command on a
-  channel only) but is not fully resolved by the protocol as implemented.
-- **A crashed/restarted owner's channel is taken over, not wedged forever,
-  but loses its in-memory variables.** Ownership is a lease (see
-  "Multi-instance ownership" above): a live owner keeps it alive with
-  `claim` heartbeats every `ownerHeartbeatInterval`. If the instance that
-  owns a channel crashes or is restarted instead of shutting down cleanly,
-  it stops heartbeating, and after `ownerLeaseTtl` the origin instance of
-  the next command for that channel takes over — starting a fresh session.
-  Any variables declared in the dead owner's session are gone; the channel
-  itself becomes usable again rather than being wedged fleet-wide. This is
-  strictly better than a permanent wedge, but it is still a data loss on
-  unclean owner death, and (like last-claim-wins above) a narrow multi-
-  instance edge case worth knowing about.
-- **Relies on a deep import of `@nestjs/core` internals**
-  (`@nestjs/core/nest-application-context`, `@nestjs/core/repl/repl-context`)
-  to build an app-wide REPL context, since only the `repl()` bootstrap
-  function itself is part of `@nestjs/core`'s public entrypoint. This is
-  pinned by the package's `@nestjs/core` peer range; a future `@nestjs/core`
-  major that relocates these modules could break it.
+- **No autocomplete or IntelliSense** against your providers. Monaco is configured
+  for plain TypeScript syntax highlighting only, not for a live language service.
+- **No session persistence.** REPL sessions and their variables live only in
+  process memory. A restart of the owner instance loses all channel state, which
+  includes the replay buffer.
+- **Ownership races are last-claim-wins.** If two instances receive the first
+  command for a new channel at almost the same time, both can briefly believe that
+  they own it. The internal `claim` message (on the `webrepl:sys` adapter topic)
+  that the group processes last decides the owner from then on. This window is
+  narrow. It only exists for the first command on a channel. The protocol as
+  implemented does not fully resolve it.
+- **The channel of a crashed or restarted owner is taken over, but loses its
+  in-memory variables.** Ownership is a lease (see
+  [Adapter / multi-instance](#adapter--multi-instance)). A live owner keeps it
+  alive with `claim` heartbeats every `ownerHeartbeatInterval`. If the owner of a
+  channel crashes or restarts without a clean shutdown, its heartbeats stop. After
+  `ownerLeaseTtl`, the origin instance of the next command for that channel takes
+  over and starts a fresh session. The variables of the dead session are gone. The
+  channel becomes usable again instead of stuck fleet-wide. This is better than a
+  permanent stuck channel, but it is still a data loss on unclean owner death. Like
+  last-claim-wins above, it is a narrow multi-instance edge case.
+- **The module relies on a deep import of `@nestjs/core` internals**
+  (`@nestjs/core/nest-application-context`, `@nestjs/core/repl/repl-context`) to
+  build an app-wide REPL context. Only the `repl()` bootstrap function itself is
+  part of the public entrypoint of `@nestjs/core`. The peer range of the package
+  pins `@nestjs/core`. A future `@nestjs/core` major that moves these modules can
+  break it.
 
 ## How this was built (transparency)
 
-This library was built with AI assistance — specifically, an agent (Claude
-Code) driving a plan-first, test-driven workflow under human direction: a
-written spec and implementation plan, then task-by-task implementation where
-each task was implemented, independently reviewed by a separate agent, and
-fixed before the next, followed by a whole-repository review.
+An AI agent (Claude Code) built this library under human direction. The workflow was
+plan-first and test-driven: a written spec and implementation plan, then
+task-by-task implementation. A separate agent reviewed each task before the next
+one started, and the fixes went in first. A whole-repository review followed.
 
-We tell you this because the honest thing to do is let you judge the code on
-its merits rather than guess at its origins. If you are skeptical of AI-written
-code, here is what to actually look at:
+We tell you this so that you can judge the code on its merits and not guess at its
+origins. If you are skeptical of AI-written code, look at these things:
 
-- **The tests.** A thorough automated suite, including a two-instance end-to-end
-  test that proves cross-instance command routing and output fan-out, and an
-  execution-proof test that resolves a real provider through the live REPL
-  context. `npm test`, `npm run build`, and the typecheck all run green in CI.
-- **The commit history.** The real TDD trail is preserved — failing test,
-  implementation, fixes — including several rounds where review caught genuine
-  defects (the trickiest: `node:repl` completion detection on modern Node, and
-  a runtime-vs-registration security bug where an earlier async-registration
-  API could have shipped the arbitrary-code endpoint live with
-  `enabled: false`; `registerAsync` now enforces `enabled` at runtime instead).
-- **The security invariants** are documented in [`AGENTS.md`](./AGENTS.md) and
-  enforced by tests, not left as prose.
+- **The tests.** A thorough automated suite. It includes a two-instance end-to-end
+  test that proves cross-instance command routing and output fan-out. It also
+  includes an execution-proof test that resolves a real provider through the live
+  REPL context. `npm test`, `npm run build`, and the typecheck all run green in CI.
+- **The commit history.** The TDD trail is preserved: failing test,
+  implementation, fixes. It includes several rounds where review caught real
+  defects. The hardest two were `node:repl` completion detection on modern Node,
+  and a runtime-vs-registration security bug. An earlier async-registration API
+  could have shipped the arbitrary-code endpoint live with `enabled: false`.
+  `registerAsync` now enforces `enabled` at runtime instead.
+- **The security invariants.** They are documented in [`AGENTS.md`](./AGENTS.md)
+  and enforced by tests, not left as prose.
 
-AI assistance does not exempt the code from scrutiny — it raises the bar for
-it. Issues and fixes are welcome from anyone who finds something we missed.
+AI assistance does not exempt the code from scrutiny. It raises the bar for it.
+Issues and fixes are welcome from anyone who finds something we missed.
 
 ## Contributing
 
-Contributions are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md). AI-
-assisted PRs are fine; we just ask you to disclose the assistance and to
-understand what you submit. Agents working in this repo should start with
+Contributions are welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md). AI-assisted
+PRs are fine. We only ask that you disclose the assistance and that you understand
+what you submit. Agents that work in this repo should start with
 [`AGENTS.md`](./AGENTS.md).
 
-PRs merge as a single squash commit whose message is the **PR title and
-description**, and that commit drives an automated release. Write the PR title as
-a [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
-`docs:`, …) so the version bump is correct; put any `BREAKING CHANGE:` note in the
-description.
+PRs merge as a single squash commit. Its message is the **PR title and
+description**, and that commit drives an automated release. Write the PR title as a
+[Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
+`docs:`, and so on) so that the version bump is correct. Put any `BREAKING CHANGE:`
+note in the description.
 
 ## License
 
