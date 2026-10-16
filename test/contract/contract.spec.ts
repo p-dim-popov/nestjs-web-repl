@@ -9,12 +9,14 @@ import {
   isDoneFor,
   isOutputContaining,
   isPing,
+  observeRedis,
   openSse,
   sleep,
   uniqueChannel,
   type Instance,
 } from './harness';
 import type { WebReplModuleOptions } from '../../src/interfaces/web-repl-options.interface';
+import { TOPICS } from '../../src/constants';
 import { transports, type Transport } from './transports';
 
 interface Pair {
@@ -235,6 +237,35 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       ]);
       expect(String(real[1].data)).toContain('slow-done');
       expect(String(real[4].data)).toContain('fast-done');
+    }, 20_000);
+  });
+
+  describe('`enabled` enforcement', () => {
+    it('a disabled instance 404s on every route and puts no traffic on Redis', async () => {
+      const observer = await observeRedis();
+      const topics = Object.values(TOPICS);
+      const log = await observer.watch(topics);
+      const before = await observer.numsub(topics); // includes the observer itself
+
+      const t = await transport.make();
+      const disabled = await bootInstance(t.adapter, { instanceId: 'OFF', enabled: false });
+      try {
+        const channel = uniqueChannel('off');
+        expect((await disabled.get('/repl')).status).toBe(404);
+        expect((await disabled.post(channel, '1 + 1')).status).toBe(404);
+        expect((await disabled.get(`/repl/${channel}/ui`)).status).toBe(404);
+        expect((await disabled.get(`/repl/${channel}/vs/loader.js`)).status).toBe(404);
+        await expect(openSse(disabled.port, channel)).rejects.toThrow(/404/);
+
+        // No subscription was added and nothing was published by it.
+        await sleep(200);
+        expect(await observer.numsub(topics)).toEqual(before);
+        expect(log).toEqual([]);
+      } finally {
+        await disabled.close();
+        await t.close();
+        await observer.close();
+      }
     }, 20_000);
   });
 });

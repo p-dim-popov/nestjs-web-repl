@@ -155,3 +155,37 @@ export const uniqueChannel = (label: string): string =>
   `${label}-${Math.random().toString(36).slice(2, 8)}`;
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * An independent observer of the shared Redis (ioredis, regardless of the
+ * transport under test): counts subscribers per topic and records every
+ * message published on the topics it watches.
+ */
+export interface RedisObserver {
+  numsub(topics: string[]): Promise<Record<string, number>>;
+  watch(topics: string[]): Promise<string[]>; // returns the live message log
+  close(): Promise<void>;
+}
+
+export const observeRedis = async (): Promise<RedisObserver> => {
+  const { default: Redis } = await import('ioredis');
+  const cmd = new Redis(REDIS_URL);
+  const sub = new Redis(REDIS_URL);
+  const log: string[] = [];
+  sub.on('message', (topic: string, message: string) => log.push(`${topic} ${message}`));
+  return {
+    async numsub(topics) {
+      const raw = (await cmd.call('PUBSUB', 'NUMSUB', ...topics)) as Array<string | number>;
+      const out: Record<string, number> = {};
+      for (let i = 0; i < raw.length; i += 2) out[String(raw[i])] = Number(raw[i + 1]);
+      return out;
+    },
+    async watch(topics) {
+      await sub.subscribe(...topics);
+      return log;
+    },
+    async close() {
+      await Promise.all([cmd.quit(), sub.quit()]);
+    },
+  };
+};
