@@ -8,6 +8,7 @@ export type {
   OutMessage,
   SysMessage,
 } from './protocol/messages';
+export type { WebReplOptions } from './protocol/options';
 
 // Replay buffer
 export { EventRingBuffer } from './ring-buffer';

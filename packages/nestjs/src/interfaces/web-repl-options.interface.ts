@@ -1,29 +1,13 @@
 import type { ModuleMetadata, Type } from '@nestjs/common';
-import type { WebReplAdapter } from '@remote-repl/core';
+import type { WebReplAdapter, WebReplOptions } from '@remote-repl/core';
 // Type-only import (erased at runtime — no circular dependency).
 import type { WebReplController } from '../web-repl.controller';
 
-/** Runtime options — the only thing registerAsync's factory resolves. */
-export interface WebReplModuleOptions {
-  /** Required. When false the module is inert: every route 404s, no subscribe. */
-  enabled: boolean;
-  /** Identifies this instance in ownership/system messages. Auto-generated if omitted. */
-  instanceId?: string;
-  /** Idle ms before a session is disposed. Default 30 min. */
-  sessionTtl?: number;
-  /** Events kept per channel for SSE replay. Default 200. */
-  replayBufferSize?: number;
-  /** SSE ping-comment interval in ms. Default 15000. */
-  heartbeatInterval?: number;
-  /** How often an instance re-announces `claim` for channels it owns. Default 10000. */
-  ownerHeartbeatInterval?: number;
-  /**
-   * How long an ownership record is trusted since the last claim/heartbeat.
-   * Default 30000. Clamped to at least `ownerHeartbeatInterval * 2` (see
-   * WebReplService's constructor).
-   */
-  ownerLeaseTtl?: number;
-}
+/**
+ * Runtime options -- the only thing registerAsync's factory resolves. Same
+ * shape as core's `WebReplOptions`; kept as a named alias for the public API.
+ */
+export interface WebReplModuleOptions extends WebReplOptions {}
 
 /** Adapter configured as a DI-capable provider (or a ready instance). */
 export type WebReplAdapterConfig =
