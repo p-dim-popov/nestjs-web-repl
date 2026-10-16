@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "rootDir": "..",
+    "paths": { "@remote-repl/core": ["../core/src/index.ts"] }
+  },
+  "references": []
+}
