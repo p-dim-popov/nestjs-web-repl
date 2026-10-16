@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ['22.x', '24.x']
-    # Real Redis for the contract suite (test/contract), which runs two app
+    # Real Redis for the contract suite (packages/nestjs/test/contract), which runs two app
     # instances over the shipped ioredis and node-redis transports.
     services:
       redis:
@@ -43,14 +43,17 @@ jobs:
         run: npm run build
 
       - name: Typecheck
-        run: npx tsc -p tsconfig.build.json --noEmit
+        run: npm run typecheck
 
       - name: Test
         run: npm test
 
   release-config:
     name: validate release config
-    if: github.event_name == 'pull_request'
+    # DISABLED with release.yml during the @remote-repl monorepo split (#19,
+    # ticket #21): the root .releaserc.json targets the pre-split single
+    # package. Both come back with the per-package release design in #33.
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -14,45 +14,70 @@ that lens — see "Security invariants" below.
 
 ## Setup, build, test
 
-- Install: `npm install`
-- Run tests: `npm test` (Vitest — unit specs under `src/`, e2e under `test/`).
-  `test/contract/` needs a reachable Redis (`docker run -d -p 6379:6379 redis:7-alpine`;
-  override the address with `REDIS_URL`).
-- Build: `npm run build` (emits `dist/` via `tsc`; must produce `dist/index.js`
-  and `dist/index.d.ts`)
-- Typecheck only: `npx tsc -p tsconfig.build.json --noEmit`
+The repo is an npm-workspaces monorepo: the root `package.json` is private
+with `workspaces: ["packages/*"]`, and every root script delegates to every
+workspace. Run everything from the workspace root.
+
+- Install: `npm install` (at the root; `node_modules` is hoisted there)
+- Run tests: `npm test` (Vitest — unit specs under `packages/*/src/`, e2e under
+  `packages/nestjs/test/`). `packages/nestjs/test/contract/` needs a reachable
+  Redis (`docker run -d -p 6379:6379 redis:7-alpine`; override the address
+  with `REDIS_URL`).
+- Build: `npm run build` (each package emits its own `dist/` via `tsc`;
+  `packages/nestjs` must produce `dist/index.js`, `dist/index.d.ts` and
+  `dist/ui/vs/`, the Monaco copy made by `scripts/copy-monaco.mjs`)
+- Typecheck only: `npm run typecheck`
 - Run the example: `npm run example` (needs `REPL_ENABLED=true`; uses `ts-node`)
+- One package only: `npm run <script> --workspace <package-name>`
+  (e.g. `npx vitest run test/contract` from inside `packages/nestjs`).
 
 The full suite, `npm run build`, and the typecheck must all be green before you
 consider a change complete.
 
 ## Project layout
 
-- `src/session/repl-session.ts` — one `node:repl` server per channel; the
-  subtlest file in the repo (see "Gotchas").
-- `src/web-repl.service.ts` — the engine: adapter pub/sub, channel ownership
-  (a heartbeat-renewed lease — see "Owner-liveness lease" below), per-channel
-  serialized execution, output fan-out, SSE replay, TTL + channel GC,
-  heartbeat, runtime `enabled` enforcement.
-- `src/web-repl.controller.ts` — the HTTP routes; SSE mapping; runtime
-  `enabled` guards; reflected-XSS-safe UI rendering.
-- `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
-- `src/web-repl.module.ts` + `src/web-repl.module-definition.ts` — `register` /
-  `registerAsync` (ConfigurableModuleBuilder).
-- `src/context/build-repl-context.ts` — builds the app-wide REPL context.
-  Isolates two fragile `@nestjs/core` deep imports (see "Gotchas").
-- `src/adapters/`, `src/ring-buffer.ts`, `src/interfaces/`, `src/constants.ts`
-- `example/` — a runnable host app. `test/` — the two-instance e2e (in-memory
-  adapter) and `test/contract/` — the contract suite: two real Nest instances
-  on a REAL Redis (`REDIS_URL`, default `redis://127.0.0.1:6379`), every
-  scenario run once per Redis transport. It pins the observable multi-instance
-  behavior (ownership, lease takeover, SSE replay, serialization, `enabled`,
-  prefix isolation) and must stay green through any refactor.
-- `src/cli/` — the `install-skill` CLI (`index.ts` dispatcher + `install-skill.ts`
-  copy logic) exposed as the `nestjs-web-repl` bin.
-- `skill/SKILL.md` — the consumer-facing Claude Code skill shipped to package
-  users (distinct from this AGENTS.md, which is for contributors). Installed via
-  `npx nestjs-web-repl install-skill`.
+Root: `package.json` (private workspace root; also owns the semantic-release
+devDependencies and `.releaserc.json`), `.github/workflows/`, `README.md`,
+`CHANGELOG.md`, `CONTRIBUTING.md`, `docs/`, and `examples/stackblitz/` (a
+standalone demo against the published package, not a workspace). Packages
+live under `packages/`:
+
+- `packages/nestjs/` — the `nestjs-web-repl` package (future
+  `@remote-repl/nestjs`), with its own `package.json`, `tsconfig*.json` and
+  `vitest.config.ts`. Paths below are relative to it.
+  - `src/session/repl-session.ts` — one `node:repl` server per channel; the
+    subtlest file in the repo (see "Gotchas").
+  - `src/web-repl.service.ts` — the engine: adapter pub/sub, channel ownership
+    (a heartbeat-renewed lease — see "Owner-liveness lease" below), per-channel
+    serialized execution, output fan-out, SSE replay, TTL + channel GC,
+    heartbeat, runtime `enabled` enforcement.
+  - `src/web-repl.controller.ts` — the HTTP routes; SSE mapping; runtime
+    `enabled` guards; reflected-XSS-safe UI rendering.
+  - `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
+    `src/ui/monaco-assets.ts` serves `dist/ui/vs` (built) or falls back to the
+    `monaco-editor` devDependency resolved from the hoisted root `node_modules`.
+  - `src/web-repl.module.ts` + `src/web-repl.module-definition.ts` — `register` /
+    `registerAsync` (ConfigurableModuleBuilder).
+  - `src/context/build-repl-context.ts` — builds the app-wide REPL context.
+    Isolates two fragile `@nestjs/core` deep imports (see "Gotchas").
+  - `src/adapters/`, `src/ring-buffer.ts`, `src/interfaces/`, `src/constants.ts`
+  - `src/cli/` — the `install-skill` CLI (`index.ts` dispatcher +
+    `install-skill.ts` copy logic) exposed as the `nestjs-web-repl` bin.
+    `src/cli/packaging.spec.ts` also pins the workspace layout (private root,
+    package at `packages/nestjs`).
+  - `skill/SKILL.md` — the consumer-facing Claude Code skill shipped to package
+    users (distinct from this AGENTS.md, which is for contributors). Installed
+    via `npx nestjs-web-repl install-skill`.
+  - `scripts/copy-monaco.mjs` — build step. Finds `monaco-editor` through
+    Node's resolver (`createRequire`), never a hardcoded `node_modules` path:
+    with workspaces the package is hoisted to the root.
+  - `example/` — a runnable host app. `test/` — the two-instance e2e (in-memory
+    adapter), `test/fakes/`, and `test/contract/` — the contract suite: two
+    real Nest instances on a REAL Redis (`REDIS_URL`, default
+    `redis://127.0.0.1:6379`), every scenario run once per Redis transport. It
+    pins the observable multi-instance behavior (ownership, lease takeover,
+    SSE replay, serialization, `enabled`, prefix isolation) and must stay
+    green through any refactor.
 
 ## Conventions
 
@@ -66,7 +91,10 @@ consider a change complete.
 - **Releases are automated** (semantic-release on merge to `main`). Never hand-
   edit `package.json` `version` or create release tags manually. Write
   Conventional Commit subjects (`feat:`, `fix:`, `feat!:` …) — they drive the
-  version bump. See "Releasing" in `README.md`.
+  version bump. See "Releasing" in `README.md`. **Release automation is
+  currently off** for the `@remote-repl` monorepo split (#19): `release.yml`
+  and the `release-config` CI job are gated with `if: false`; #33 re-enables
+  releases per package.
 
 ## Security invariants (do not regress these)
 

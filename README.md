@@ -61,12 +61,12 @@ Here `dev` is a channel name. See [Endpoints](#endpoints). Type a command and pr
 resolves from the whole DI container, not only from the module that imports
 `WebReplModule`.
 
-A runnable example is in [`example/`](./example). `example/cat.service.ts`
-registers a small `CatService`. `example/app.module.ts` calls
-`WebReplModule.register(...)`. `example/main.ts` starts the app. Run it with:
+A runnable example is in [`packages/nestjs/example/`](./packages/nestjs/example). `packages/nestjs/example/cat.service.ts`
+registers a small `CatService`. `packages/nestjs/example/app.module.ts` calls
+`WebReplModule.register(...)`. `packages/nestjs/example/main.ts` starts the app. Run it with:
 
 ```bash
-REPL_ENABLED=true PORT=3000 npx ts-node -T example/main.ts
+REPL_ENABLED=true PORT=3000 npx ts-node -T packages/nestjs/example/main.ts
 # or, from a checkout of this repo: REPL_ENABLED=true PORT=3000 npm run example
 ```
 
@@ -434,6 +434,10 @@ description**, and that commit drives an automated release. Write the PR title a
 [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
 `docs:`, and so on) so that the version bump is correct. Put any `BREAKING CHANGE:`
 note in the description.
+
+The release pipeline is paused while the package is split into the
+`@remote-repl` monorepo (see issue #19): merges to `main` do not publish until
+the per-package release flow lands.
 
 ## License
 

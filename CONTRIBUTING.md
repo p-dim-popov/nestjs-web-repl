@@ -7,7 +7,7 @@ about how the work was produced** — see the AI policy below.
 ## Ground rules
 
 - **Tests must stay green.** Run `npm test`, `npm run build`, and
-  `npx tsc -p tsconfig.build.json --noEmit` before opening a PR. Add tests for
+  `npm run typecheck` before opening a PR. Add tests for
   new behavior; don't weaken an existing assertion to make something pass.
 - **Read [`AGENTS.md`](./AGENTS.md)** first — it documents the build/test flow,
   the project layout, the security invariants, and the `node:repl` gotchas.

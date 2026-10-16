@@ -14,6 +14,10 @@ permissions:
 jobs:
   release:
     name: Release
+    # DISABLED during the @remote-repl monorepo split (#19, ticket #21).
+    # semantic-release would publish half-migrated packages on every merge to
+    # main. Re-enabled/redesigned for per-package releases in #33.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -45,7 +49,7 @@ jobs:
         run: npm run build
 
       - name: Typecheck
-        run: npx tsc -p tsconfig.build.json --noEmit
+        run: npm run typecheck
 
       - name: Test
         run: npm test
