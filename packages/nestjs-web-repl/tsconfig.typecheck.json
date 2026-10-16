@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "paths": {
+      "nestjs-web-repl": [
+        "./src/index.ts"
+      ],
+      "nestjs-web-repl/redis": [
+        "./src/redis.ts"
+      ],
+      "@remote-repl/nestjs": [
+        "../nestjs/src/index.ts"
+      ],
+      "@remote-repl/redis": [
+        "../redis/src/index.ts"
+      ],
+      "@remote-repl/core": [
+        "../core/src/index.ts"
+      ]
+    }
+  },
+  "references": []
+}

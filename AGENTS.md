@@ -27,8 +27,8 @@ workspace. Run everything from the workspace root.
   `packages/core` must produce `dist/index.js`, `dist/index.d.ts` and
   `dist/ui/vs/`, the Monaco copy made by its `scripts/copy-monaco.mjs`;
   `packages/redis` and `packages/nestjs` must each produce `dist/index.js`
-  and `dist/index.d.ts`; nestjs also `dist/redis.js` + `dist/redis.d.ts`, the
-  subpath shim)
+  and `dist/index.d.ts`; `packages/nestjs-web-repl` (the shim) those plus
+  `dist/redis.js` + `dist/redis.d.ts`, its `./redis` subpath)
 - Typecheck only: `npm run typecheck`
 - Protocol schema drift check: `npm run schema:check` (regenerates
   `packages/core/schema/protocol.schema.json` from the TS types and diffs)
@@ -37,17 +37,22 @@ workspace. Run everything from the workspace root.
 - One package only: `npm run <script> --workspace <package-name>`
   (e.g. `npx vitest run test/contract` from inside `packages/nestjs`).
 
-How one package finds another (`packages/nestjs` → `@remote-repl/core` and
-`@remote-repl/redis`; `packages/redis` → `@remote-repl/core`): each is a
+How one package finds another (`packages/nestjs` → `@remote-repl/core`;
+`packages/redis` → `@remote-repl/core`; `packages/nestjs-web-repl` →
+`@remote-repl/nestjs` + `@remote-repl/redis`): each is a
 workspace dependency (npm links `node_modules/@remote-repl/<name>` →
 `packages/<name>`). Tests and typecheck resolve it from SOURCE
 (`vitest.config.ts` alias and `tsconfig.typecheck.json` `paths` →
 `../<name>/src/index.ts`), so `npm test` and `npm run typecheck` need no
 prior build. The build resolves the symlink to `packages/<name>/dist`
 (`tsconfig.build.json` declares a project reference and runs `tsc -b`, so
-dependencies are compiled first). Each package's `tsbuildinfo` lives inside
+dependencies are compiled first; a package another one references must set
+`composite: true` in its `tsconfig.build.json` and `composite: false` back in
+its `tsconfig.typecheck.json`). Each package's `tsbuildinfo` lives inside
 its `dist/` so `rm -rf dist` is a true clean. Copy this pattern for any new
-package.
+package. `unplugin-swc` reads the package's `tsconfig.json` for
+`experimentalDecorators`: a package whose specs use Nest decorators needs
+them there, not only in the typecheck config.
 
 The full suite, `npm run build`, the typecheck and `npm run schema:check` (the
 protocol schema drift check) must all be green before you consider a change
@@ -150,16 +155,17 @@ live under `packages/`:
 - `packages/nestjs/` — `@remote-repl/nestjs` (private until the per-package
   release design lands), with its own `package.json`, `tsconfig*.json` and
   `vitest.config.ts`. The root `example` script addresses it by this name.
-  The unscoped `nestjs-web-repl` package name is NOT resolvable inside the
-  workspace right now: nothing in the repo imports it (the example and
-  tests import `../src`; `examples/stackblitz/` targets the published
-  package) and the re-export shim that will own that name is a separate
-  ticket. Depends on `@remote-repl/core` and re-exports what its public API
-  needs (`InMemoryWebReplAdapter`, `WebReplAdapter`, `WebReplEvent`,
-  `SseEventType`), so `import { WebReplModule } from ...` keeps working
-  through the shim. `src/redis.ts` (the `./redis` subpath) is a one-line
-  `export * from '@remote-repl/redis'`, pinned by `src/redis.spec.ts`. rxjs
-  is a peer of THIS package (the Observable adaptation lives here), never of
+  The legacy unscoped `nestjs-web-repl` name is owned by the shim package
+  below; nothing in this package imports it (the example and tests import
+  `../src`; `examples/stackblitz/` targets the published package). Depends
+  on `@remote-repl/core` and re-exports what its public API needs
+  (`InMemoryWebReplAdapter`, `WebReplAdapter`, `WebReplEvent`,
+  `SseEventType`), so `import { WebReplModule } from 'nestjs-web-repl'`
+  keeps working through the shim. It exports ONLY its own API: no `./redis`
+  subpath, no `typesVersions`, no redis-client peers (`src/cli/packaging.spec.ts`
+  pins that); `@remote-repl/redis` is a devDependency for `test/contract/`
+  only. rxjs is a peer of THIS package (the Observable adaptation lives
+  here), never of
   core. Paths below are relative to it.
   - `src/web-repl.service.ts` — `WebReplService extends RemoteReplEngine`:
     the thin Nest face of core's engine. DI construction (passes
@@ -205,6 +211,23 @@ live under `packages/`:
     replay, serialization, `enabled`, and cross-app isolation: no prefix
     leaks, same prefix shares, different prefixes isolate) and must stay
     green through any refactor.
+- `packages/nestjs-web-repl/` — the `nestjs-web-repl` package: the legacy
+  name kept alive as a thin re-export shim so existing installs resolve with
+  zero code changes. Deliberately NOT under the `@remote-repl` scope.
+  `src/index.ts` = `export * from '@remote-repl/nestjs'`; `src/redis.ts`
+  (the `./redis` subpath, with a `typesVersions` fallback) =
+  `export * from '@remote-repl/redis'`. No logic of its own, ever. Depends on
+  `@remote-repl/nestjs` and `@remote-repl/redis` with caret ranges and its
+  `version` is kept in LOCKSTEP with `@remote-repl/nestjs` (pinned by
+  `src/packaging.spec.ts`, together with the exports map, the NestJS/rxjs
+  peers, the optional `ioredis`/`redis` peers, `files: ["dist"]`, the absence
+  of a `bin` and the tarball contents). Ships its own `README.md` and
+  `LICENSE` because root files are not packed. `src/shim.spec.ts` pins export
+  keys and object identity against the `@remote-repl/*` barrels;
+  `test/shim-app.e2e.spec.ts` boots a Nest app that imports
+  `nestjs-web-repl` (via the vitest alias to `src/`) and checks runtime
+  `enabled` through the shim. The old `npx nestjs-web-repl install-skill` bin
+  is NOT exposed here (see `CHANGELOG.md`).
 
 ## Conventions
 

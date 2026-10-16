@@ -1,3 +1,13 @@
+# Unreleased
+
+### Features
+
+* `nestjs-web-repl` is now a thin compatibility shim over the `@remote-repl` packages: `nestjs-web-repl` re-exports `@remote-repl/nestjs` and `nestjs-web-repl/redis` re-exports `@remote-repl/redis`. Imports, options, peer dependencies and behaviour are unchanged; the two versions move in lockstep ([#30](https://github.com/p-dim-popov/nestjs-web-repl/issues/30), [#19](https://github.com/p-dim-popov/nestjs-web-repl/issues/19))
+
+### Removed
+
+* The `npx nestjs-web-repl install-skill` bin (a one-time bootstrap convenience, not a runtime feature). Install the Claude Code skill with `npx skills add p-dim-popov/node-remote-repl/skills/nestjs-web-repl` instead ([#30](https://github.com/p-dim-popov/nestjs-web-repl/issues/30), [#31](https://github.com/p-dim-popov/nestjs-web-repl/issues/31))
+
 ## [2.3.2](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.3.1...v2.3.2) (2026-10-16)
 
 ## [2.3.1](https://github.com/p-dim-popov/nestjs-web-repl/compare/v2.3.0...v2.3.1) (2026-08-17)
