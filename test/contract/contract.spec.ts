@@ -8,6 +8,7 @@ import {
   bootInstance,
   isDoneFor,
   isOutputContaining,
+  isPing,
   openSse,
   sleep,
   uniqueChannel,
@@ -145,6 +146,95 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       } finally {
         await pair.closeAll();
       }
+    }, 20_000);
+  });
+
+  describe('SSE replay', () => {
+    let pair: Pair;
+    beforeAll(async () => {
+      pair = await bootPair(transport, { heartbeatInterval: 150 });
+    });
+    afterAll(() => pair.closeAll());
+
+    it('a client reconnecting with Last-Event-ID receives only the events it missed', async () => {
+      const { a, b } = pair;
+      const channel = uniqueChannel('replay');
+      const live = await openSse(a.port, channel);
+      const c1 = await a.post(channel, "'one'");
+      await live.waitFor(isDoneFor(c1.commandId));
+      const c2 = await a.post(channel, "'two'");
+      await live.waitFor(isDoneFor(c2.commandId));
+      const all = live.frames.filter((f) => !isPing(f));
+      live.close();
+      // Six real events: command/output/done for each of the two commands.
+      expect(all.map((f) => f.event.type)).toEqual([
+        'command', 'output', 'system', 'command', 'output', 'system',
+      ]);
+      // Wire ids are the event ids, strictly increasing.
+      expect(all.map((f) => Number(f.wireId))).toEqual(all.map((f) => f.event.id));
+
+      // Reconnect (on the OTHER instance, which only relayed) from the
+      // cursor of the last event of the first command.
+      const cursor = all[2].event.id;
+      const resumed = await openSse(b.port, channel, cursor);
+      const got = await resumed.settle(300);
+      resumed.close();
+      expect(got.filter((f) => !isPing(f)).map((f) => f.event)).toEqual(
+        all.slice(3).map((f) => f.event),
+      );
+    }, 20_000);
+
+    it('heartbeats carry the last real event id, so an idle reconnect replays nothing', async () => {
+      const { a } = pair;
+      const channel = uniqueChannel('idle');
+      const live = await openSse(a.port, channel);
+      const c1 = await a.post(channel, "'hello'");
+      const done = await live.waitFor(isDoneFor(c1.commandId));
+
+      // Idle: wait for a heartbeat that arrives AFTER the last real event.
+      const ping = await live.waitFor((f) => isPing(f) && live.frames.indexOf(f) > live.frames.indexOf(done));
+      live.close();
+      expect(ping.wireId).toBe(String(done.event.id));
+
+      // A browser EventSource would reconnect with that id; nothing is replayed.
+      const resumed = await openSse(a.port, channel, ping.wireId!);
+      const got = await resumed.settle(300);
+      resumed.close();
+      expect(got.filter((f) => !isPing(f))).toEqual([]);
+      // Even before any real event, a heartbeat echoes the client's own cursor.
+      expect(got.filter(isPing).every((f) => f.wireId === ping.wireId)).toBe(true);
+    }, 20_000);
+  });
+
+  describe('per-channel serialization', () => {
+    let pair: Pair;
+    beforeAll(async () => {
+      pair = await bootPair(transport);
+    });
+    afterAll(() => pair.closeAll());
+
+    it('runs two commands on one channel serially and tags every output with the executing command', async () => {
+      const { a, b } = pair;
+      const channel = uniqueChannel('serial');
+      const sse = await openSse(b.port, channel);
+      // The first command sleeps before producing output; the second (posted
+      // via the other instance) must still wait for it to finish.
+      const slow = await a.post(channel, "await new Promise(r => setTimeout(r, 400)); 'slow-done'");
+      const fast = await b.post(channel, "'fast-done'");
+      await sse.waitFor(isDoneFor(fast.commandId));
+      sse.close();
+
+      const real = sse.frames.filter((f) => !isPing(f)).map((f) => f.event);
+      expect(real.map((e) => [e.type, e.commandId])).toEqual([
+        ['command', slow.commandId],
+        ['output', slow.commandId],
+        ['system', slow.commandId],
+        ['command', fast.commandId],
+        ['output', fast.commandId],
+        ['system', fast.commandId],
+      ]);
+      expect(String(real[1].data)).toContain('slow-done');
+      expect(String(real[4].data)).toContain('fast-done');
     }, 20_000);
   });
 });
