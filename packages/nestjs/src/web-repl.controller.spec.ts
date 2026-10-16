@@ -1,6 +1,5 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication, BadRequestException } from '@nestjs/common';
-import { of } from 'rxjs';
 import request from 'supertest';
 import { WebReplController } from './web-repl.controller';
 import { WebReplService } from './web-repl.service';
@@ -11,7 +10,7 @@ describe('WebReplController', () => {
   let app: INestApplication;
   const svc = {
     dispatch: vi.fn(async () => ({ commandId: 'cmd_x' })),
-    stream: vi.fn(),
+    events: vi.fn(),
   };
 
   beforeAll(async () => {
@@ -103,7 +102,7 @@ describe('WebReplController', () => {
     let disabledApp: INestApplication;
     const disabledSvc = {
       dispatch: vi.fn(async () => ({ commandId: 'should-not-be-called' })),
-      stream: vi.fn(() => { throw new Error('stream() should not be reached when disabled'); }),
+      events: vi.fn(() => { throw new Error('events() should not be reached when disabled'); }),
     };
 
     beforeAll(async () => {
@@ -139,7 +138,7 @@ describe('WebReplController', () => {
         .get('/repl/x')
         .set('Accept', 'text/event-stream');
       expect(res.status).toBe(404);
-      expect(disabledSvc.stream).not.toHaveBeenCalled();
+      expect(disabledSvc.events).not.toHaveBeenCalled();
     });
 
     it('GET :channel/vs returns 404 when disabled', async () => {
@@ -154,12 +153,12 @@ describe('WebReplController', () => {
   });
 
   it('end-to-end: heartbeats repeat the last real event id instead of clobbering it', async () => {
-    svc.stream.mockReturnValueOnce(
-      of(
-        { id: 5, type: 'output', commandId: 'cmd_1', data: 'hi' },
-        { id: 0, type: 'system', commandId: null, data: { ping: true } },
-        { id: 0, type: 'system', commandId: null, data: { ping: true } },
-      ),
+    svc.events.mockReturnValueOnce(
+      (async function* () {
+        yield { id: 5, type: 'output', commandId: 'cmd_1', data: 'hi' };
+        yield { id: 0, type: 'system', commandId: null, data: { ping: true } };
+        yield { id: 0, type: 'system', commandId: null, data: { ping: true } };
+      })(),
     );
     const res = await request(app.getHttpServer())
       .get('/repl/chanA')
