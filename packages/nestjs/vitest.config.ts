@@ -8,7 +8,10 @@ export default defineConfig({
     // Run against core's SOURCE so `npm test` needs no prior build and edits
     // in packages/core are picked up immediately. The build resolves the
     // workspace symlink to packages/core/dist instead (see tsconfig.build.json).
-    alias: { '@remote-repl/core': resolve(__dirname, '../core/src/index.ts') },
+    alias: {
+      '@remote-repl/core': resolve(__dirname, '../core/src/index.ts'),
+      '@remote-repl/redis': resolve(__dirname, '../redis/src/index.ts'),
+    },
   },
   test: {
     globals: true,

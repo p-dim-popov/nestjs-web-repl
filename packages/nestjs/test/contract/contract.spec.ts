@@ -305,6 +305,30 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       }
     }, 20_000);
 
+    it('with the SAME prefix, the apps share output and ownership like replicas -- the prefix is a tenancy key, not an app id', async () => {
+      const observer = await observeRedis();
+      const wire = await observer.watch(['shared:webrepl:out']);
+      const apps = await bootApps('shared:', 'shared:');
+      try {
+        const channel = uniqueChannel('same-prefix');
+        const sseB = await openSse(apps.b.port, channel);
+        const first = await apps.a.post(channel, "const secret = 'from-A'");
+        // App B's stream sees app A's command complete...
+        expect(await sseB.waitFor(isDoneFor(first.commandId))).toBeDefined();
+        // ...and app A keeps owning the channel for app B's commands.
+        const second = await apps.b.post(channel, 'secret');
+        const out = await sseB.waitFor(isOutputContaining('from-A'));
+        expect(out.event.commandId).toBe(second.commandId);
+        // Both apps put their traffic on the same prefixed wire topic.
+        expect(wire.length).toBeGreaterThan(0);
+        expect(wire.every((m) => m.startsWith('shared:webrepl:out '))).toBe(true);
+        sseB.close();
+      } finally {
+        await apps.closeAll();
+        await observer.close();
+      }
+    }, 20_000);
+
     it('with different prefixes, the apps never exchange output or ownership', async () => {
       const observer = await observeRedis();
       const prefixedOut = await observer.watch(['app-a:webrepl:out']);

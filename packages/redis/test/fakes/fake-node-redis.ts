@@ -1,4 +1,4 @@
-import type { NodeRedisLike } from '../../src/adapters/redis/node-redis-web-repl.adapter';
+import type { NodeRedisLike } from '../../src/node-redis-web-repl.adapter';
 
 type Listener = (message: string, channel: string) => void;
 
