@@ -59,6 +59,16 @@ live under `packages/`:
   dependencies (pinned by `src/package-boundary.spec.ts`). No decorators, so
   its `vitest.config.ts` needs neither swc nor `reflect-metadata`. Consumers
   import only from the barrel `src/index.ts`. Paths relative to it:
+  - `src/engine/remote-repl-engine.ts` — `RemoteReplEngine`, the engine:
+    transport pub/sub, channel ownership (a heartbeat-renewed lease — see
+    "Owner-liveness lease" below), per-channel serialized execution, output
+    fan-out, replay, TTL + channel GC, the client-visible `{ping}` heartbeat,
+    runtime `enabled` enforcement (`ReplDisabledError`). A plain class (no
+    decorators, no rxjs): constructor `(options, transport, buildContext,
+    clock, logger)`, `start()`/`stop()`, `dispatch()`, `openStream()` (the
+    synchronous subscribe/close primitive) and `events()` (an async iterator
+    built on it). Its spec drives it with the in-memory transport and an
+    injected clock.
   - `src/session/repl-session.ts` — one `node:repl` server per channel; the
     subtlest file in the repo (see "Gotchas").
   - `src/protocol/` — the wire protocol: `messages.ts` (`WebReplEvent`,
@@ -86,11 +96,16 @@ live under `packages/`:
   `WebReplEvent`, `SseEventType`), so `import { WebReplModule } from
   'nestjs-web-repl'` and the `nestjs-web-repl/redis` subpath are unchanged.
   Paths below are relative to it.
-  - `src/web-repl.service.ts` — the engine: adapter pub/sub, channel ownership
-    (a heartbeat-renewed lease — see "Owner-liveness lease" below), per-channel
-    serialized execution, output fan-out, SSE replay, TTL + channel GC,
-    heartbeat, runtime `enabled` enforcement. (Still Nest-flavoured; its
-    extraction into core is a later ticket.)
+  - `src/web-repl.service.ts` — `WebReplService extends RemoteReplEngine`:
+    the thin Nest face of core's engine. DI construction (passes
+    `new Logger('WebReplService')`), `onModuleInit`/`onModuleDestroy` →
+    `start()`/`stop()`, `ReplDisabledError` → `NotFoundException` (a
+    rejection from `dispatch()`, a synchronous throw from `stream()`), and
+    `stream()` as an RxJS `Observable` over the engine's `openStream()`.
+    No engine logic lives here. `src/web-repl.service.spec.ts` is the
+    behaviour-preservation gate for the engine extraction: it reaches
+    engine internals by name (`channels`, `ownership`, `onCmd`, …), so the
+    engine's members stay plain TS `private`, never `#private`.
   - `src/web-repl.controller.ts` — the HTTP routes; SSE mapping; runtime
     `enabled` guards; reflected-XSS-safe UI rendering. Uses core's UI, Monaco
     and SSE helpers.
@@ -162,12 +177,14 @@ live under `packages/`:
   `@nestjs/core/nest-application-context` are not public API. They are isolated
   to `src/context/build-repl-context.ts` and covered by an execution-proof
   test. If a `@nestjs/core` major bump breaks them, fix them here.
-- **Per-channel serialization**: output is tagged with the currently executing
+- **Per-channel serialization** (`packages/core/src/engine/remote-repl-engine.ts`):
+  output is tagged with the currently executing
   command; commands on a channel run serially. Don't reintroduce a shared
   cross-channel "current command" field.
 - **Two unrelated heartbeats, don't conflate them**: `heartbeatInterval` /
   `DEFAULTS.heartbeatInterval` drives the client-visible SSE `{ping}` keep-alive
-  in `stream()`. `ownerHeartbeatInterval` / `ownerLeaseTtl` drive the internal
+  started per subscriber in the engine's `openStream()`.
+  `ownerHeartbeatInterval` / `ownerLeaseTtl` drive the internal
   owner-liveness lease (an instance re-announcing `claim` for channels it
   owns, and the staleness check in `onCmd`). They are independent knobs for
   independent mechanisms; changing one must never implicitly affect the
@@ -175,11 +192,15 @@ live under `packages/`:
 
 ### Owner-liveness lease
 
-Ownership of a channel is a lease, not a permanent grant: the owning instance
-must re-announce `claim` every `ownerHeartbeatInterval` (an injectable clock,
-`WEB_REPL_CLOCK`, drives `ownerSeenAt` timestamps so tests can control
-staleness deterministically — see `web-repl.service.spec.ts`'s
-`makeServiceWithClock` helper). If no claim/heartbeat has been seen for a
+Implemented in `packages/core/src/engine/remote-repl-engine.ts` (`onCmd`,
+`heartbeatOwnedChannels`, the constructor clamp). Ownership of a channel is a
+lease, not a permanent grant: the owning instance
+must re-announce `claim` every `ownerHeartbeatInterval` (the engine's
+injectable `clock` constructor argument — `WEB_REPL_CLOCK` in the Nest
+package — drives `ownerSeenAt` timestamps so tests can control
+staleness deterministically — see `remote-repl-engine.spec.ts`'s
+`makeSharedClock` and `web-repl.service.spec.ts`'s `makeServiceWithClock`
+helpers). If no claim/heartbeat has been seen for a
 channel's recorded owner within `ownerLeaseTtl`, `onCmd` treats it as
 effectively ownerless and lets the ORIGIN instance of the next command for it
 take over (fresh session; the dead owner's variables are gone). A live,
@@ -191,9 +212,11 @@ jitter measured on a PEER's clock, so a single heartbeat delivered late could
 make a live owner look stale to someone else and get preempted. The 2x
 margin guarantees a live owner always has at least one full heartbeat
 interval of slack. If you touch this
-logic, re-run `src/web-repl.service.spec.ts`'s `owner-liveness` describe block
-a few times to confirm it isn't flaky — it's all driven by the injected clock,
-not real waits, so it should never be.
+logic, re-run the `owner-liveness` describe blocks of
+`packages/core/src/engine/remote-repl-engine.spec.ts` and
+`packages/nestjs/src/web-repl.service.spec.ts` a few times to confirm they
+aren't flaky — staleness is all driven by the injected clock, not real
+waits, so they should never be.
 
 ## Provenance
 

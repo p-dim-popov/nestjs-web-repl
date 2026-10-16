@@ -5,7 +5,12 @@ import {
   type Provider,
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { WEB_REPL_OPTIONS, WEB_REPL_ADAPTER, WEB_REPL_CLOCK } from './constants';
+import {
+  WEB_REPL_OPTIONS,
+  WEB_REPL_ADAPTER,
+  WEB_REPL_CLOCK,
+  WEB_REPL_CONTEXT_FACTORY,
+} from './constants';
 import type {
   WebReplModuleOptions,
   WebReplModuleExtras,
@@ -15,8 +20,6 @@ import { InMemoryWebReplAdapter } from '@remote-repl/core';
 import { WebReplService } from './web-repl.service';
 import { WebReplController } from './web-repl.controller';
 import { buildReplContext } from './context/build-repl-context';
-
-const CONTEXT_FACTORY = 'WEB_REPL_CONTEXT_FACTORY';
 
 type BuiltAdapter = {
   provider: Provider;
@@ -90,7 +93,7 @@ const definition = new ConfigurableModuleBuilder<WebReplModuleOptions>()
           { provide: WEB_REPL_OPTIONS, useExisting: optionsToken },
           adapter.provider,
           {
-            provide: CONTEXT_FACTORY,
+            provide: WEB_REPL_CONTEXT_FACTORY,
             useFactory: (moduleRef: ModuleRef) => () => buildReplContext(moduleRef),
             inject: [ModuleRef],
           },
