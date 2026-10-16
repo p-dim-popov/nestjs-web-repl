@@ -1,4 +1,7 @@
-import { BaseRedisWebReplAdapter } from './base-redis-web-repl.adapter';
+import {
+  BaseRedisWebReplAdapter,
+  type RedisWebReplAdapterOptions,
+} from './base-redis-web-repl.adapter';
 
 /** Minimal structural surface of an ioredis client (no `ioredis` import). */
 export interface IoRedisLike {
@@ -16,8 +19,11 @@ export interface IoRedisLike {
 export class IoRedisWebReplAdapter extends BaseRedisWebReplAdapter {
   private subscriber?: IoRedisLike;
 
-  constructor(private readonly publisher: IoRedisLike) {
-    super();
+  constructor(
+    private readonly publisher: IoRedisLike,
+    options?: RedisWebReplAdapterOptions,
+  ) {
+    super(options);
   }
 
   private ensureSubscriber(): IoRedisLike {

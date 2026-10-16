@@ -268,4 +268,76 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       }
     }, 20_000);
   });
+
+  describe('cross-app isolation on a shared Redis', () => {
+    // Two different APPS (not two replicas of one app) sharing one Redis.
+    const bootApps = async (prefixA?: string, prefixB?: string) => {
+      const ta = await transport.make({ prefix: prefixA });
+      const tb = await transport.make({ prefix: prefixB });
+      const a = await bootInstance(ta.adapter, { instanceId: 'app-A' });
+      const b = await bootInstance(tb.adapter, { instanceId: 'app-B' });
+      return {
+        a,
+        b,
+        closeAll: async () => {
+          await Promise.allSettled([a.close(), b.close()]);
+          await Promise.all([ta.close(), tb.close()]);
+        },
+      };
+    };
+
+    it('with no prefix (the default), two apps leak output and ownership to each other -- documented current behavior', async () => {
+      const apps = await bootApps();
+      try {
+        const channel = uniqueChannel('leak');
+        const sseB = await openSse(apps.b.port, channel);
+        const first = await apps.a.post(channel, "const secret = 'from-A'");
+        // App B's UI sees app A's REPL history...
+        const done = await sseB.waitFor(isDoneFor(first.commandId));
+        expect(done).toBeDefined();
+        // ...and app A owns the channel for app B's commands too.
+        const second = await apps.b.post(channel, 'secret');
+        const out = await sseB.waitFor(isOutputContaining('from-A'));
+        expect(out.event.commandId).toBe(second.commandId);
+        sseB.close();
+      } finally {
+        await apps.closeAll();
+      }
+    }, 20_000);
+
+    it('with different prefixes, the apps never exchange output or ownership', async () => {
+      const observer = await observeRedis();
+      const prefixedOut = await observer.watch(['app-a:webrepl:out']);
+      const apps = await bootApps('app-a:', 'app-b:');
+      try {
+        const channel = uniqueChannel('isolated');
+        const sseA = await openSse(apps.a.port, channel);
+        const sseB = await openSse(apps.b.port, channel);
+        const first = await apps.a.post(channel, "const secret = 'from-A'");
+        await sseA.waitFor(isDoneFor(first.commandId));
+        // Nothing from app A reaches app B's stream for the same channel name.
+        expect((await sseB.settle(300)).filter((f) => !isPing(f))).toEqual([]);
+
+        // App B owns its own channel: it executes locally, in its own session.
+        const second = await apps.b.post(channel, 'typeof secret');
+        const out = await sseB.waitFor(isOutputContaining('undefined'));
+        expect(out.event.commandId).toBe(second.commandId);
+        const start = sseB.frames.find(
+          (f) => f.event.type === 'command' && f.event.commandId === second.commandId,
+        )!;
+        expect(executorOf(start)).toBe('app-B');
+        // And app A's stream never saw app B's command.
+        expect(sseA.frames.some((f) => f.event.commandId === second.commandId)).toBe(false);
+
+        // The prefix is prepended verbatim to the wire topic names.
+        expect(prefixedOut.length).toBeGreaterThan(0);
+        expect(prefixedOut.every((m) => m.startsWith('app-a:webrepl:out '))).toBe(true);
+        sseA.close();
+        sseB.close();
+      } finally {
+        await apps.closeAll();
+        await observer.close();
+      }
+    }, 20_000);
+  });
 });

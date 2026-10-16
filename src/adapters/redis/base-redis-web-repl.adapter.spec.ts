@@ -75,4 +75,25 @@ describe('BaseRedisWebReplAdapter', () => {
     expect(() => a.emit('webrepl:cmd', 'x')).not.toThrow();
     expect(got).toEqual(['x']);
   });
+
+  describe('topic prefix', () => {
+    it('prepends the prefix verbatim on the wire and strips it before dispatching to handlers', async () => {
+      const a = new FakeBase({ prefix: 'tenant-a:' });
+      const got: string[] = [];
+      await a.subscribe('webrepl:cmd', (m) => got.push(m));
+      await a.publish('webrepl:cmd', 'x');
+      expect(a.subscribeCalls).toEqual(['tenant-a:webrepl:cmd']);
+      expect(a.publishes).toEqual([['tenant-a:webrepl:cmd', 'x']]);
+      a.emit('tenant-a:webrepl:cmd', 'hello');
+      expect(got).toEqual(['hello']);
+    });
+
+    it('without a prefix, topic names are byte-identical on the wire', async () => {
+      const a = new FakeBase();
+      await a.subscribe('webrepl:out', () => {});
+      await a.publish('webrepl:out', 'x');
+      expect(a.subscribeCalls).toEqual(['webrepl:out']);
+      expect(a.publishes).toEqual([['webrepl:out', 'x']]);
+    });
+  });
 });

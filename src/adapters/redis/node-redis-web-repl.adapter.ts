@@ -1,4 +1,7 @@
-import { BaseRedisWebReplAdapter } from './base-redis-web-repl.adapter';
+import {
+  BaseRedisWebReplAdapter,
+  type RedisWebReplAdapterOptions,
+} from './base-redis-web-repl.adapter';
 
 /** Minimal structural surface of a node-redis v4 client (no `redis` import). */
 export interface NodeRedisLike {
@@ -18,8 +21,11 @@ export class NodeRedisWebReplAdapter extends BaseRedisWebReplAdapter {
   private subscriber?: NodeRedisLike;
   private connecting?: Promise<NodeRedisLike>;
 
-  constructor(private readonly publisher: NodeRedisLike) {
-    super();
+  constructor(
+    private readonly publisher: NodeRedisLike,
+    options?: RedisWebReplAdapterOptions,
+  ) {
+    super(options);
   }
 
   private async ensureSubscriber(): Promise<NodeRedisLike> {

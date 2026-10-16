@@ -299,6 +299,16 @@ WebReplModule.register({
 });
 ```
 
+**Two apps on one Redis.** The topics have no origin check, so two different
+apps that share one Redis exchange REPL output and ownership. Give each app's
+adapter its own topic `prefix`. The adapter prepends it verbatim to every topic
+name. The default is no prefix, which keeps the current behavior.
+
+```ts
+new IoRedisWebReplAdapter(client, { prefix: 'billing-api:' });
+new NodeRedisWebReplAdapter(client, { prefix: 'billing-api:' });
+```
+
 `ioredis` and `redis` are optional peer dependencies. Install the one that you use.
 Both adapters extend a small shared base. To target another broker, subclass
 `BaseRedisWebReplAdapter` or implement `WebReplAdapter` directly.
