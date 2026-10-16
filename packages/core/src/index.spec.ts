@@ -31,3 +31,10 @@ describe('@remote-repl/core barrel: HTTP helpers', () => {
     expect(core.landingRedirectUrl('/repl', 'abc')).toBe('/repl/abc/ui');
   });
 });
+
+describe('@remote-repl/core barrel: engine', () => {
+  it('exports the engine and its disabled error', () => {
+    expect(typeof core.RemoteReplEngine).toBe('function');
+    expect(new core.ReplDisabledError()).toBeInstanceOf(Error);
+  });
+});

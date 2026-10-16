@@ -17,6 +17,15 @@ export { EventRingBuffer } from './ring-buffer';
 export { ReplSession } from './session/repl-session';
 export type { ReplSessionOptions } from './session/repl-session';
 
+// Engine (framework-free; framework packages wrap it)
+export { RemoteReplEngine, ReplDisabledError } from './engine/remote-repl-engine';
+export type {
+  ContextFactory,
+  EngineLogger,
+  StreamSink,
+  StreamSubscription,
+} from './engine/remote-repl-engine';
+
 // Transports
 export { InMemoryWebReplAdapter } from './transport/in-memory.adapter';
 
