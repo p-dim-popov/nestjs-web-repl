@@ -9,32 +9,51 @@ import {
   isDoneFor,
   isOutputContaining,
   openSse,
+  sleep,
   uniqueChannel,
   type Instance,
 } from './harness';
+import type { WebReplModuleOptions } from '../../src/interfaces/web-repl-options.interface';
 import { transports, type Transport } from './transports';
+
+interface Pair {
+  a: Instance;
+  b: Instance;
+  closeAll(): Promise<void>;
+}
+
+/** Two instances ('A' and 'B') on fresh adapters of the given transport, sharing the real Redis. */
+const bootPair = async (
+  transport: Transport,
+  options: Partial<WebReplModuleOptions> = {},
+): Promise<Pair> => {
+  const ta = await transport.make();
+  const tb = await transport.make();
+  const a = await bootInstance(ta.adapter, { instanceId: 'A', ...options });
+  const b = await bootInstance(tb.adapter, { instanceId: 'B', ...options });
+  return {
+    a,
+    b,
+    closeAll: async () => {
+      await Promise.allSettled([a.close(), b.close()]);
+      await Promise.all([ta.close(), tb.close()]);
+    },
+  };
+};
+
+const executorOf = (f: { event: { data: unknown } }) =>
+  (f.event.data as { instanceId: string }).instanceId;
 
 describe.each(transports)('contract over $name', (transport: Transport) => {
   describe('ownership & single execution', () => {
-    let a: Instance;
-    let b: Instance;
-    const closers: Array<() => Promise<void>> = [];
-
+    let pair: Pair;
     beforeAll(async () => {
-      const ta = await transport.make();
-      const tb = await transport.make();
-      closers.push(ta.close, tb.close);
-      a = await bootInstance(ta.adapter, { instanceId: 'A' });
-      b = await bootInstance(tb.adapter, { instanceId: 'B' });
+      pair = await bootPair(transport);
     });
-
-    afterAll(async () => {
-      await a.close();
-      await b.close();
-      await Promise.all(closers.map((c) => c()));
-    });
+    afterAll(() => pair.closeAll());
 
     it('executes a command exactly once on the owner, relays from the other, fans output to both streams', async () => {
+      const { a, b } = pair;
       const channel = uniqueChannel('own');
       const sseA = await openSse(a.port, channel);
       const sseB = await openSse(b.port, channel);
@@ -61,12 +80,71 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
             (f) => f.event.type === 'command' && f.event.commandId === cmd.commandId,
           );
           expect(starts).toHaveLength(1);
-          expect((starts[0].event.data as { instanceId: string }).instanceId).toBe('A');
+          expect(executorOf(starts[0])).toBe('A');
         }
         expect(sse.frames.some((f) => String(f.event.data).includes('ReferenceError'))).toBe(false);
       }
       sseA.close();
       sseB.close();
+    }, 20_000);
+  });
+
+  describe('lease takeover', () => {
+    // Short lease so the scenario runs in real time: heartbeat 200ms, lease
+    // 400ms (the enforced minimum of 2x heartbeat).
+    const lease = { ownerHeartbeatInterval: 200, ownerLeaseTtl: 400 };
+
+    it('a live, heartbeating owner is never preempted, even long after the lease TTL', async () => {
+      const pair = await bootPair(transport, lease);
+      try {
+        const { a, b } = pair;
+        const channel = uniqueChannel('live');
+        const sseB = await openSse(b.port, channel);
+        const first = await a.post(channel, 'const kept = 7');
+        await sseB.waitFor(isDoneFor(first.commandId));
+
+        // Well past ownerLeaseTtl -- A's heartbeats must have kept the lease fresh on B.
+        await sleep(lease.ownerLeaseTtl * 3);
+
+        const second = await b.post(channel, 'kept * 6');
+        const out = await sseB.waitFor(isOutputContaining('42'));
+        expect(out.event.commandId).toBe(second.commandId);
+        const start = sseB.frames.find(
+          (f) => f.event.type === 'command' && f.event.commandId === second.commandId,
+        )!;
+        expect(executorOf(start)).toBe('A');
+        sseB.close();
+      } finally {
+        await pair.closeAll();
+      }
+    }, 20_000);
+
+    it('after the owner dies and the lease expires, the next command’s origin takes over with a fresh session', async () => {
+      const pair = await bootPair(transport, lease);
+      try {
+        const { a, b } = pair;
+        const channel = uniqueChannel('dead');
+        const sseB = await openSse(b.port, channel);
+        const first = await a.post(channel, 'const gone = 1');
+        await sseB.waitFor(isDoneFor(first.commandId));
+
+        // Kill the owner without a release (a crash, as far as B can tell).
+        await a.close();
+        await sleep(lease.ownerLeaseTtl + 200);
+
+        const second = await b.post(channel, 'typeof gone');
+        expect(second.status).toBe(202);
+        const out = await sseB.waitFor(isOutputContaining('undefined'));
+        expect(out.event.commandId).toBe(second.commandId);
+        const start = sseB.frames.find(
+          (f) => f.event.type === 'command' && f.event.commandId === second.commandId,
+        )!;
+        expect(executorOf(start)).toBe('B');
+        await sseB.waitFor(isDoneFor(second.commandId));
+        sseB.close();
+      } finally {
+        await pair.closeAll();
+      }
     }, 20_000);
   });
 });
