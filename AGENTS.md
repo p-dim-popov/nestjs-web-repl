@@ -101,9 +101,25 @@ live under `packages/`:
     `monaco-editor` devDependency through Node's resolver (hoisted to the root
     `node_modules`); it is also the sole path-traversal guard for the asset
     route.
-  - `src/http/` — pure HTTP helpers: `sse-frame.ts` (`toSseFrame` → a plain
-    `SseFrame {id,type,data}`, heartbeat id stamping) and `landing.ts`
-    (`randomChannelName`, `landingRedirectUrl`).
+  - `src/http/` — the framework-free HTTP layer. `handlers.ts` is the
+    shared route-handler layer every framework adapter wires to:
+    `createReplHandlers(engine, { enabled })` returns five plain-data
+    handlers — `landing(requestUrl) → redirectUrl`, `post(channel, body) →
+    Promise<{commandId}>`, `stream(channel, lastEventId) →
+    AsyncIterableIterator<string>` (ready-to-send SSE text frames, owns the
+    heartbeat id-stamping; the adapter MUST call `return()` on disconnect,
+    that is what closes the engine subscription), `ui(channel) → html`,
+    `asset(relativePath) → MonacoAsset | null`. Error contract: every
+    handler throws `ReplDisabledError` when disabled (synchronously, except
+    `post`, which is always async and rejects — also with
+    `InvalidCommandError` for a bad body → 400). Adapters map errors to
+    status codes and use `SSE_RESPONSE_HEADERS` + `SSE_STREAM_PREAMBLE` and
+    `parseLastEventId(header)` so the wire format matches the reference
+    exactly. Route logic belongs here, never in an adapter. Pure helpers:
+    `sse-frame.ts` (`toSseFrame` → a plain `SseFrame {id,type,data}`,
+    heartbeat id stamping; `sseFrameToText` → wire text) and `landing.ts`
+    (`randomChannelName`, `landingRedirectUrl`). `src/package-boundary.spec.ts`
+    also greps core's sources for `@nestjs/*`, express or rxjs imports.
   - `scripts/copy-monaco.mjs` — build step. Finds `monaco-editor` through
     Node's resolver (`createRequire`), never a hardcoded `node_modules` path.
 - `packages/redis/` — `@remote-repl/redis` (private until the per-package

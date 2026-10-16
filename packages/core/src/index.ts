@@ -49,6 +49,15 @@ export { monacoVsDir, resolveMonacoFile } from './ui/monaco-assets';
 export type { MonacoAsset } from './ui/monaco-assets';
 
 // Framework-free HTTP helpers (SSE frame mapping, landing redirect)
-export { toSseFrame } from './http/sse-frame';
+export { toSseFrame, sseFrameToText } from './http/sse-frame';
 export type { SseFrame } from './http/sse-frame';
 export { randomChannelName, landingRedirectUrl } from './http/landing';
+// Framework-free route handlers (all route logic; adapters do HTTP wiring)
+export {
+  createReplHandlers,
+  InvalidCommandError,
+  parseLastEventId,
+  SSE_RESPONSE_HEADERS,
+  SSE_STREAM_PREAMBLE,
+} from './http/handlers';
+export type { ReplHandlers, ReplHandlerEngine, ReplHandlerOptions } from './http/handlers';

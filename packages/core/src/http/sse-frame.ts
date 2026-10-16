@@ -33,3 +33,14 @@ export function toSseFrame(event: WebReplEvent, lastRealId: number): SseFrame {
   const id = event.id === 0 ? lastRealId : event.id;
   return { id: String(id), type: 'message', data: JSON.stringify(event) };
 }
+
+/**
+ * Serialises one frame to the exact wire text the reference (Nest)
+ * implementation emits: `event: <type>\nid: <id>\ndata: <data>\n\n`.
+ * Field values must not contain line breaks (JSON data never does); any
+ * CR/LF in them is stripped rather than allowed to forge extra fields.
+ */
+export function sseFrameToText(frame: SseFrame): string {
+  const line = (v: string) => v.replace(/[\r\n]/g, '');
+  return `event: ${line(frame.type)}\nid: ${line(frame.id)}\ndata: ${line(frame.data)}\n\n`;
+}

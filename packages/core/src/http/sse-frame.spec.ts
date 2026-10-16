@@ -1,4 +1,4 @@
-import { toSseFrame } from './sse-frame';
+import { sseFrameToText, toSseFrame } from './sse-frame';
 
 // A heartbeat frame (WebReplEvent with id: 0) must not clobber the browser
 // EventSource's reconnection cursor. Omitting `id` is not an option either:
@@ -30,5 +30,19 @@ describe('toSseFrame (SSE event mapping)', () => {
   it("uses the event's own id for a normal (non-heartbeat) event, ignoring lastRealId", () => {
     const frame = toSseFrame({ id: 7, type: 'output', commandId: 'cmd_1', data: 'hi' }, 3);
     expect(frame.id).toBe('7');
+  });
+});
+
+describe('sseFrameToText (wire serialisation)', () => {
+  it('emits event, id and data lines terminated by a blank line, exactly as the reference does', () => {
+    expect(sseFrameToText({ id: '7', type: 'message', data: '{"id":7}' })).toBe(
+      'event: message\nid: 7\ndata: {"id":7}\n\n',
+    );
+  });
+
+  it('strips line breaks from field values so a value cannot forge extra fields', () => {
+    expect(sseFrameToText({ id: '7\nid: 9', type: 'message', data: 'x' })).toBe(
+      'event: message\nid: 7id: 9\ndata: x\n\n',
+    );
   });
 });

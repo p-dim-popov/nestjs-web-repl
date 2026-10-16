@@ -38,3 +38,13 @@ describe('@remote-repl/core barrel: engine', () => {
     expect(new core.ReplDisabledError()).toBeInstanceOf(Error);
   });
 });
+
+describe('@remote-repl/core barrel: route handlers', () => {
+  it('exports the handler factory, its errors and the SSE wire constants', () => {
+    expect(typeof core.createReplHandlers).toBe('function');
+    expect(new core.InvalidCommandError().message).toBe('command must be a non-empty string');
+    expect(core.parseLastEventId('3')).toBe(3);
+    expect(core.SSE_RESPONSE_HEADERS['Content-Type']).toBe('text/event-stream');
+    expect(core.sseFrameToText({ id: '1', type: 'message', data: 'x' })).toContain('id: 1\n');
+  });
+});

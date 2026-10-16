@@ -1,5 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+const walk = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)],
+  );
 
 // @remote-repl/core is the framework-free heart of the monorepo. Every
 // framework adapter (nestjs today, express/bun/deno later) depends on it, so
@@ -34,5 +39,12 @@ describe('@remote-repl/core package boundary', () => {
     expect(pkg.main).toBe('dist/index.js');
     expect(pkg.types).toBe('dist/index.d.ts');
     expect(pkg.exports['.']).toEqual({ types: './dist/index.d.ts', default: './dist/index.js' });
+  });
+
+  it('has no source file importing @nestjs/*, express or rxjs (the handlers included)', () => {
+    const offenders = walk(join(process.cwd(), 'src'))
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => /from ['"](@nestjs\/|express|rxjs)/.test(readFileSync(f, 'utf8')));
+    expect(offenders).toEqual([]);
   });
 });
