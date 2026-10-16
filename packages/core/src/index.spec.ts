@@ -16,3 +16,10 @@ describe('@remote-repl/core barrel: session and transport', () => {
     expect(typeof core.InMemoryWebReplAdapter).toBe('function');
   });
 });
+
+describe('@remote-repl/core barrel: UI', () => {
+  it('exports the UI renderer and the Monaco asset resolver', () => {
+    expect(core.renderReplUi('ch')).toContain('<!doctype html>');
+    expect(core.resolveMonacoFile('loader.js')).not.toBeNull();
+  });
+});

@@ -18,3 +18,8 @@ export type { ReplSessionOptions } from './session/repl-session';
 
 // Transports
 export { InMemoryWebReplAdapter } from './transport/in-memory.adapter';
+
+// Browser UI (self-hosted Monaco)
+export { renderReplUi } from './ui/repl-ui.html';
+export { monacoVsDir, resolveMonacoFile } from './ui/monaco-assets';
+export type { MonacoAsset } from './ui/monaco-assets';

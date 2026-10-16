@@ -21,8 +21,8 @@ import { WEB_REPL_OPTIONS } from './constants';
 import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
 import type { WebReplEvent } from '@remote-repl/core';
 import { WebReplService } from './web-repl.service';
-import { renderReplUi } from './ui/repl-ui.html';
-import { resolveMonacoFile } from './ui/monaco-assets';
+import { renderReplUi } from '@remote-repl/core';
+import { resolveMonacoFile } from '@remote-repl/core';
 
 // IMPORTANT 2: the heartbeat is emitted as a real WebReplEvent with the
 // sentinel `id: 0`. Per the SSE spec, any non-null `id` field (including

@@ -5,7 +5,7 @@ import request from 'supertest';
 import { WebReplController, toSseFrame, randomChannelName, landingRedirectUrl } from './web-repl.controller';
 import { WebReplService } from './web-repl.service';
 import { WEB_REPL_OPTIONS } from './constants';
-import { renderReplUi } from './ui/repl-ui.html';
+import { renderReplUi } from '@remote-repl/core';
 
 describe('WebReplController', () => {
   let app: INestApplication;
