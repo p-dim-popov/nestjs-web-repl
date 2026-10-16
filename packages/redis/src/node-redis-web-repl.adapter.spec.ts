@@ -1,4 +1,4 @@
-import { FakeNodeRedis, FakeRedisBus } from '../../../test/fakes/fake-node-redis';
+import { FakeNodeRedis, FakeRedisBus } from '../test/fakes/fake-node-redis';
 import { NodeRedisWebReplAdapter } from './node-redis-web-repl.adapter';
 
 describe('NodeRedisWebReplAdapter', () => {

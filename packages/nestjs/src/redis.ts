@@ -1,1 +1,1 @@
-export * from './adapters/redis';
+export * from '@remote-repl/redis';

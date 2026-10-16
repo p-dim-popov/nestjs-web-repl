@@ -76,6 +76,38 @@ describe('BaseRedisWebReplAdapter', () => {
     expect(got).toEqual(['x']);
   });
 
+  describe('logger', () => {
+    it('reports a handler fault through the injected logger, naming the bare topic', async () => {
+      const errors: string[] = [];
+      const a = new FakeBase({
+        prefix: 'tenant-a:',
+        logger: { warn: () => {}, error: (m) => errors.push(m) },
+      });
+      await a.subscribe('webrepl:cmd', () => {
+        throw new Error('boom');
+      });
+      a.emit('tenant-a:webrepl:cmd', 'x');
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('"webrepl:cmd"');
+      expect(errors[0]).toContain('boom');
+    });
+
+    it('defaults to console.error so a fault is never silently swallowed', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const a = new FakeBase();
+        await a.subscribe('webrepl:cmd', () => {
+          throw new Error('boom');
+        });
+        a.emit('webrepl:cmd', 'x');
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(String(spy.mock.calls[0][0])).toContain('boom');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+  });
+
   describe('topic prefix', () => {
     it('prepends the prefix verbatim on the wire and strips it before dispatching to handlers', async () => {
       const a = new FakeBase({ prefix: 'tenant-a:' });

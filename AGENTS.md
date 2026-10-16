@@ -26,7 +26,9 @@ workspace. Run everything from the workspace root.
 - Build: `npm run build` (each package emits its own `dist/` via `tsc`;
   `packages/core` must produce `dist/index.js`, `dist/index.d.ts` and
   `dist/ui/vs/`, the Monaco copy made by its `scripts/copy-monaco.mjs`;
-  `packages/nestjs` must produce `dist/index.js` and `dist/index.d.ts`)
+  `packages/redis` and `packages/nestjs` must each produce `dist/index.js`
+  and `dist/index.d.ts`; nestjs also `dist/redis.js` + `dist/redis.d.ts`, the
+  subpath shim)
 - Typecheck only: `npm run typecheck`
 - Protocol schema drift check: `npm run schema:check` (regenerates
   `packages/core/schema/protocol.schema.json` from the TS types and diffs)
@@ -35,14 +37,17 @@ workspace. Run everything from the workspace root.
 - One package only: `npm run <script> --workspace <package-name>`
   (e.g. `npx vitest run test/contract` from inside `packages/nestjs`).
 
-How `packages/nestjs` finds `@remote-repl/core`: it is a workspace
-dependency (npm links `node_modules/@remote-repl/core` → `packages/core`).
-Tests and typecheck resolve it from SOURCE (`vitest.config.ts` alias and
-`tsconfig.typecheck.json` `paths` → `../core/src/index.ts`), so `npm test`
-and `npm run typecheck` need no prior build. The build resolves the symlink
-to `packages/core/dist` (`tsconfig.build.json` declares a project reference
-and runs `tsc -b`, so core is compiled first). Each package's
-`tsbuildinfo` lives inside its `dist/` so `rm -rf dist` is a true clean.
+How one package finds another (`packages/nestjs` → `@remote-repl/core` and
+`@remote-repl/redis`; `packages/redis` → `@remote-repl/core`): each is a
+workspace dependency (npm links `node_modules/@remote-repl/<name>` →
+`packages/<name>`). Tests and typecheck resolve it from SOURCE
+(`vitest.config.ts` alias and `tsconfig.typecheck.json` `paths` →
+`../<name>/src/index.ts`), so `npm test` and `npm run typecheck` need no
+prior build. The build resolves the symlink to `packages/<name>/dist`
+(`tsconfig.build.json` declares a project reference and runs `tsc -b`, so
+dependencies are compiled first). Each package's `tsbuildinfo` lives inside
+its `dist/` so `rm -rf dist` is a true clean. Copy this pattern for any new
+package.
 
 The full suite, `npm run build`, the typecheck and `npm run schema:check` (the
 protocol schema drift check) must all be green before you consider a change
@@ -91,13 +96,34 @@ live under `packages/`:
     (`randomChannelName`, `landingRedirectUrl`).
   - `scripts/copy-monaco.mjs` — build step. Finds `monaco-editor` through
     Node's resolver (`createRequire`), never a hardcoded `node_modules` path.
+- `packages/redis/` — `@remote-repl/redis` (private until the per-package
+  release design lands): the Redis transports. Depends on `@remote-repl/core`
+  (the `WebReplAdapter` interface) and nothing else; `ioredis` and `redis` are
+  OPTIONAL peers (pinned by `src/package-boundary.spec.ts`, which also
+  forbids `@nestjs/*`, express, rxjs). No decorators, no swc, no
+  `reflect-metadata`. Paths relative to it:
+  - `src/base-redis-web-repl.adapter.ts` — `BaseRedisWebReplAdapter`: handler
+    fan-out, subscribe once per topic, handler-fault isolation (a throwing
+    handler never escapes into the client's emitter nor skips other
+    handlers), and the topic `prefix`. `RedisWebReplAdapterOptions` =
+    `{ prefix?, logger? }`; `logger` is any `{ warn, error }` (a Nest
+    `Logger`, pino, …), default `console` — this package has no framework
+    logger. The prefix is prepended verbatim to WIRE topic names and stripped
+    before dispatch; with no prefix the names are byte-identical to the
+    engine's `TOPICS`. The prefix belongs to the shared medium, NOT the
+    engine: the in-memory transport takes none.
+  - `src/ioredis-web-repl.adapter.ts`, `src/node-redis-web-repl.adapter.ts` —
+    the two clients, each behind a structural `*Like` interface (no client
+    import at runtime). `test/fakes/fake-node-redis.ts` — the node-redis fake
+    used by the unit spec; the ioredis spec uses `ioredis-mock`.
 - `packages/nestjs/` — the `nestjs-web-repl` package (future
   `@remote-repl/nestjs`), with its own `package.json`, `tsconfig*.json` and
   `vitest.config.ts`. Depends on `@remote-repl/core` and re-exports what its
   public API needs (`InMemoryWebReplAdapter`, `WebReplAdapter`,
   `WebReplEvent`, `SseEventType`), so `import { WebReplModule } from
-  'nestjs-web-repl'` and the `nestjs-web-repl/redis` subpath are unchanged.
-  Paths below are relative to it.
+  'nestjs-web-repl'` is unchanged. `src/redis.ts` (the `nestjs-web-repl/redis`
+  subpath) is a one-line `export * from '@remote-repl/redis'`, pinned by
+  `src/redis.spec.ts`. Paths below are relative to it.
   - `src/web-repl.service.ts` — the engine: adapter pub/sub, channel ownership
     (a heartbeat-renewed lease — see "Owner-liveness lease" below), per-channel
     serialized execution, output fan-out, SSE replay, TTL + channel GC,
@@ -110,8 +136,7 @@ live under `packages/`:
     `registerAsync` (ConfigurableModuleBuilder).
   - `src/context/build-repl-context.ts` — builds the app-wide REPL context.
     Isolates two fragile `@nestjs/core` deep imports (see "Gotchas").
-  - `src/adapters/redis/` — the Redis transports (ioredis, node-redis).
-    `src/interfaces/web-repl-options.interface.ts` — `WebReplModuleOptions`
+  - `src/interfaces/web-repl-options.interface.ts` — `WebReplModuleOptions`
     (extends core's `WebReplOptions`), `WebReplAdapterConfig`,
     `WebReplModuleExtras`. `src/constants.ts` — the Nest DI tokens only.
   - `src/cli/` — the `install-skill` CLI (`index.ts` dispatcher +
@@ -122,11 +147,12 @@ live under `packages/`:
     users (distinct from this AGENTS.md, which is for contributors). Installed
     via `npx nestjs-web-repl install-skill`.
   - `example/` — a runnable host app. `test/` — the two-instance e2e (in-memory
-    adapter), `test/fakes/`, and `test/contract/` — the contract suite: two
-    real Nest instances on a REAL Redis (`REDIS_URL`, default
-    `redis://127.0.0.1:6379`), every scenario run once per Redis transport. It
-    pins the observable multi-instance behavior (ownership, lease takeover,
-    SSE replay, serialization, `enabled`, prefix isolation) and must stay
+    adapter) and `test/contract/` — the contract suite: two real Nest
+    instances on a REAL Redis (`REDIS_URL`, default `redis://127.0.0.1:6379`),
+    every scenario run once per transport from `@remote-repl/redis`. It pins
+    the observable multi-instance behavior (ownership, lease takeover, SSE
+    replay, serialization, `enabled`, and cross-app isolation: no prefix
+    leaks, same prefix shares, different prefixes isolate) and must stay
     green through any refactor.
 
 ## Conventions
@@ -134,8 +160,9 @@ live under `packages/`:
 - TypeScript, strict mode. NestJS `@nestjs/common` / `@nestjs/core` are
   **peer** dependencies (`^10 || ^11`) of `packages/nestjs` — never add them
   as runtime deps. `packages/core` must stay free of every framework,
-  transport client and rxjs; put framework-specific code in the package that
-  owns the framework.
+  transport client and rxjs; `packages/redis` of every framework and rxjs
+  (its clients are optional peers). Put framework-specific code in the
+  package that owns the framework.
 - TDD: write a failing test first, then the minimal implementation. Do not
   weaken or delete an assertion to make a test pass — fix the code.
 - The controller returns strings and RxJS `Observable`s only (no raw

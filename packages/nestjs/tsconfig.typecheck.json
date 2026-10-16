@@ -3,7 +3,10 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "..",
-    "paths": { "@remote-repl/core": ["../core/src/index.ts"] }
+    "paths": {
+      "@remote-repl/core": ["../core/src/index.ts"],
+      "@remote-repl/redis": ["../redis/src/index.ts"]
+    }
   },
   "references": []
 }
