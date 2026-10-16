@@ -26,19 +26,23 @@ workspace. Run everything from the workspace root.
 - Build: `npm run build` (each package emits its own `dist/` via `tsc`;
   `packages/core` must produce `dist/index.js`, `dist/index.d.ts` and
   `dist/ui/vs/`, the Monaco copy made by its `scripts/copy-monaco.mjs`;
-  `packages/redis` and `packages/nestjs` must each produce `dist/index.js`
-  and `dist/index.d.ts`; nestjs also `dist/redis.js` + `dist/redis.d.ts`, the
+  `packages/redis`, `packages/express` and `packages/nestjs` must each
+  produce `dist/index.js` and `dist/index.d.ts`; nestjs also `dist/redis.js` + `dist/redis.d.ts`, the
   subpath shim)
 - Typecheck only: `npm run typecheck`
 - Protocol schema drift check: `npm run schema:check` (regenerates
   `packages/core/schema/protocol.schema.json` from the TS types and diffs)
-- Run the example: `npm run example` (needs `REPL_ENABLED=true`; uses `ts-node`,
-  which resolves `@remote-repl/core` from its built `dist/` — build first)
+- Run the examples: `npm run example` (NestJS) and `npm run example:express`
+  (Express; demo bearer token `REPL_TOKEN`, default `dev-token`, as
+  `Authorization: Bearer …` or `?token=`). Both need `REPL_ENABLED=true` and
+  use `ts-node`, which resolves `@remote-repl/core` from its built `dist/` —
+  build first.
 - One package only: `npm run <script> --workspace <package-name>`
   (e.g. `npx vitest run test/contract` from inside `packages/nestjs`).
 
 How one package finds another (`packages/nestjs` → `@remote-repl/core` and
-`@remote-repl/redis`; `packages/redis` → `@remote-repl/core`): each is a
+`@remote-repl/redis`; `packages/redis` and `packages/express` →
+`@remote-repl/core`): each is a
 workspace dependency (npm links `node_modules/@remote-repl/<name>` →
 `packages/<name>`). Tests and typecheck resolve it from SOURCE
 (`vitest.config.ts` alias and `tsconfig.typecheck.json` `paths` →
@@ -142,6 +146,36 @@ live under `packages/`:
     the two clients, each behind a structural `*Like` interface (no client
     import at runtime). `test/fakes/fake-node-redis.ts` — the node-redis fake
     used by the unit spec; the ioredis spec uses `ioredis-mock`.
+- `packages/express/` — `@remote-repl/express` (private until the per-package
+  release design lands): the Express adapter, thin wiring of core's
+  `createReplHandlers` onto an Express `Router`. Depends on `@remote-repl/core`
+  and nothing else; `express` (`^4.16 || ^5`) is a PEER (pinned by
+  `src/package-boundary.spec.ts`, which also forbids `@nestjs/*`, rxjs, redis
+  clients). No decorators, no swc, no `reflect-metadata`. Paths relative to it:
+  - `src/repl-router.ts` — `createReplRouter({ engine, enabled })`. The user
+    mounts it (`app.use('/repl', router)`) and the MOUNT PATH IS THE BASE PATH
+    (landing redirects via `req.originalUrl`; there is no base-path option).
+    Routes: `GET /` landing 302, `POST /:channel` 202 (JSON parsing scoped to
+    this route; `InvalidCommandError` → 400 with the handler's message),
+    `GET /:channel` SSE (`SSE_RESPONSE_HEADERS`, `SSE_STREAM_PREAMBLE`, then
+    the handler's frames verbatim; `return()` on `res` `close`), `GET
+    /:channel/ui`, and the Monaco assets as a RegExp route
+    (`/^\/([^/]+)\/vs\/(.+)$/`, `req.params[1]`) so the same code works on
+    Express 4 (`*` → `params[0]`) and 5 (`*path` → `string[]`).
+    `ReplDisabledError` → 404 on every route; errors are caught explicitly
+    (no reliance on Express 5 promise forwarding). The user's auth middleware
+    goes in front of the router; none is shipped.
+  - `src/repl-engine.ts` — `createReplEngine({ options, transport, context |
+    buildContext, logger? })`: builds a `RemoteReplEngine` for an app with no
+    DI. The caller owns `start()` / `stop()`; `start()` is a no-op when
+    disabled (subscribes to nothing).
+  - `src/repl-router.spec.ts` (supertest, fake engine: mirrors the NestJS
+    controller spec incl. the heartbeat `id: 5` ×3 case, UI escaping, asset
+    traversal, mount-path-as-base, disconnect → `return()`),
+    `src/integration.spec.ts` (real engine + in-memory transport round trip,
+    disabled engine subscribes to nothing, auth middleware in front → 401).
+  - `example/main.ts` — runnable host app: `REPL_ENABLED` (default off),
+    bearer-token middleware in front, `CatService` exposed via `context`.
 - `packages/nestjs/` — the `nestjs-web-repl` package (future
   `@remote-repl/nestjs`), with its own `package.json`, `tsconfig*.json` and
   `vitest.config.ts`. Depends on `@remote-repl/core` and re-exports what its
@@ -192,8 +226,9 @@ live under `packages/`:
   **peer** dependencies (`^10 || ^11`) of `packages/nestjs` — never add them
   as runtime deps. `packages/core` must stay free of every framework,
   transport client and rxjs; `packages/redis` of every framework and rxjs
-  (its clients are optional peers). Put framework-specific code in the
-  package that owns the framework.
+  (its clients are optional peers); `packages/express` of NestJS and rxjs
+  (`express` is its peer). Put framework-specific code in the package that
+  owns the framework.
 - TDD: write a failing test first, then the minimal implementation. Do not
   weaken or delete an assertion to make a test pass — fix the code.
 - The controller returns strings and RxJS `Observable`s only (no raw
@@ -211,8 +246,10 @@ live under `packages/`:
 
 1. **`enabled` is enforced at runtime**, not just at registration. A disabled
    module must not subscribe to the adapter and must 404 on every route — via
-   both `register` and `registerAsync`. This is the product's only built-in
-   safety rail; treating it as advisory-only is a critical bug.
+   both `register` and `registerAsync` in NestJS, and via `createReplRouter`
+   AND the engine's own `start()` guard in Express. Every framework adapter
+   replicates this. This is the product's only built-in safety rail; treating
+   it as advisory-only is a critical bug.
 2. **The UI escapes the channel name** for the `<script>` context (`<`
    escaping) and uses `encodeURIComponent` for URLs. SSE payloads render via
    `textContent`, never `innerHTML`.
