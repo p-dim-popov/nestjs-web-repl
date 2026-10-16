@@ -24,12 +24,23 @@ workspace. Run everything from the workspace root.
   Redis (`docker run -d -p 6379:6379 redis:7-alpine`; override the address
   with `REDIS_URL`).
 - Build: `npm run build` (each package emits its own `dist/` via `tsc`;
-  `packages/nestjs` must produce `dist/index.js`, `dist/index.d.ts` and
-  `dist/ui/vs/`, the Monaco copy made by `scripts/copy-monaco.mjs`)
+  `packages/core` must produce `dist/index.js`, `dist/index.d.ts` and
+  `dist/ui/vs/`, the Monaco copy made by its `scripts/copy-monaco.mjs`;
+  `packages/nestjs` must produce `dist/index.js` and `dist/index.d.ts`)
 - Typecheck only: `npm run typecheck`
-- Run the example: `npm run example` (needs `REPL_ENABLED=true`; uses `ts-node`)
+- Run the example: `npm run example` (needs `REPL_ENABLED=true`; uses `ts-node`,
+  which resolves `@remote-repl/core` from its built `dist/` — build first)
 - One package only: `npm run <script> --workspace <package-name>`
   (e.g. `npx vitest run test/contract` from inside `packages/nestjs`).
+
+How `packages/nestjs` finds `@remote-repl/core`: it is a workspace
+dependency (npm links `node_modules/@remote-repl/core` → `packages/core`).
+Tests and typecheck resolve it from SOURCE (`vitest.config.ts` alias and
+`tsconfig.typecheck.json` `paths` → `../core/src/index.ts`), so `npm test`
+and `npm run typecheck` need no prior build. The build resolves the symlink
+to `packages/core/dist` (`tsconfig.build.json` declares a project reference
+and runs `tsc -b`, so core is compiled first). Each package's
+`tsbuildinfo` lives inside its `dist/` so `rm -rf dist` is a true clean.
 
 The full suite, `npm run build`, and the typecheck must all be green before you
 consider a change complete.
@@ -42,25 +53,55 @@ devDependencies and `.releaserc.json`), `.github/workflows/`, `README.md`,
 standalone demo against the published package, not a workspace). Packages
 live under `packages/`:
 
-- `packages/nestjs/` — the `nestjs-web-repl` package (future
-  `@remote-repl/nestjs`), with its own `package.json`, `tsconfig*.json` and
-  `vitest.config.ts`. Paths below are relative to it.
+- `packages/core/` — `@remote-repl/core` (private until the per-package
+  release design lands): everything with NO framework dependency. Its
+  `package.json` has zero `@nestjs/*`, express, redis/ioredis or rxjs
+  dependencies (pinned by `src/package-boundary.spec.ts`). No decorators, so
+  its `vitest.config.ts` needs neither swc nor `reflect-metadata`. Consumers
+  import only from the barrel `src/index.ts`. Paths relative to it:
   - `src/session/repl-session.ts` — one `node:repl` server per channel; the
     subtlest file in the repo (see "Gotchas").
+  - `src/protocol/` — the wire protocol: `messages.ts` (`WebReplEvent`,
+    `CmdMessage`, `OutMessage`, `SysMessage`), `adapter.ts` (the
+    `WebReplAdapter` transport interface; its optional `onModuleDestroy?`
+    hook keeps that name for compatibility), `constants.ts` (`TOPICS`,
+    `DEFAULTS`), `options.ts` (`WebReplOptions`, the framework-free options
+    shape).
+  - `src/ring-buffer.ts` — `EventRingBuffer`, the per-channel SSE replay buffer.
+  - `src/transport/in-memory.adapter.ts` — `InMemoryWebReplAdapter`.
+  - `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
+    `src/ui/monaco-assets.ts` serves `dist/ui/vs` (built) or falls back to the
+    `monaco-editor` devDependency through Node's resolver (hoisted to the root
+    `node_modules`); it is also the sole path-traversal guard for the asset
+    route.
+  - `src/http/` — pure HTTP helpers: `sse-frame.ts` (`toSseFrame` → a plain
+    `SseFrame {id,type,data}`, heartbeat id stamping) and `landing.ts`
+    (`randomChannelName`, `landingRedirectUrl`).
+  - `scripts/copy-monaco.mjs` — build step. Finds `monaco-editor` through
+    Node's resolver (`createRequire`), never a hardcoded `node_modules` path.
+- `packages/nestjs/` — the `nestjs-web-repl` package (future
+  `@remote-repl/nestjs`), with its own `package.json`, `tsconfig*.json` and
+  `vitest.config.ts`. Depends on `@remote-repl/core` and re-exports what its
+  public API needs (`InMemoryWebReplAdapter`, `WebReplAdapter`,
+  `WebReplEvent`, `SseEventType`), so `import { WebReplModule } from
+  'nestjs-web-repl'` and the `nestjs-web-repl/redis` subpath are unchanged.
+  Paths below are relative to it.
   - `src/web-repl.service.ts` — the engine: adapter pub/sub, channel ownership
     (a heartbeat-renewed lease — see "Owner-liveness lease" below), per-channel
     serialized execution, output fan-out, SSE replay, TTL + channel GC,
-    heartbeat, runtime `enabled` enforcement.
+    heartbeat, runtime `enabled` enforcement. (Still Nest-flavoured; its
+    extraction into core is a later ticket.)
   - `src/web-repl.controller.ts` — the HTTP routes; SSE mapping; runtime
-    `enabled` guards; reflected-XSS-safe UI rendering.
-  - `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
-    `src/ui/monaco-assets.ts` serves `dist/ui/vs` (built) or falls back to the
-    `monaco-editor` devDependency resolved from the hoisted root `node_modules`.
+    `enabled` guards; reflected-XSS-safe UI rendering. Uses core's UI, Monaco
+    and SSE helpers.
   - `src/web-repl.module.ts` + `src/web-repl.module-definition.ts` — `register` /
     `registerAsync` (ConfigurableModuleBuilder).
   - `src/context/build-repl-context.ts` — builds the app-wide REPL context.
     Isolates two fragile `@nestjs/core` deep imports (see "Gotchas").
-  - `src/adapters/`, `src/ring-buffer.ts`, `src/interfaces/`, `src/constants.ts`
+  - `src/adapters/redis/` — the Redis transports (ioredis, node-redis).
+    `src/interfaces/web-repl-options.interface.ts` — `WebReplModuleOptions`
+    (extends core's `WebReplOptions`), `WebReplAdapterConfig`,
+    `WebReplModuleExtras`. `src/constants.ts` — the Nest DI tokens only.
   - `src/cli/` — the `install-skill` CLI (`index.ts` dispatcher +
     `install-skill.ts` copy logic) exposed as the `nestjs-web-repl` bin.
     `src/cli/packaging.spec.ts` also pins the workspace layout (private root,
@@ -68,9 +109,6 @@ live under `packages/`:
   - `skill/SKILL.md` — the consumer-facing Claude Code skill shipped to package
     users (distinct from this AGENTS.md, which is for contributors). Installed
     via `npx nestjs-web-repl install-skill`.
-  - `scripts/copy-monaco.mjs` — build step. Finds `monaco-editor` through
-    Node's resolver (`createRequire`), never a hardcoded `node_modules` path:
-    with workspaces the package is hoisted to the root.
   - `example/` — a runnable host app. `test/` — the two-instance e2e (in-memory
     adapter), `test/fakes/`, and `test/contract/` — the contract suite: two
     real Nest instances on a REAL Redis (`REDIS_URL`, default
@@ -82,7 +120,10 @@ live under `packages/`:
 ## Conventions
 
 - TypeScript, strict mode. NestJS `@nestjs/common` / `@nestjs/core` are
-  **peer** dependencies (`^10 || ^11`) — never add them as runtime deps.
+  **peer** dependencies (`^10 || ^11`) of `packages/nestjs` — never add them
+  as runtime deps. `packages/core` must stay free of every framework,
+  transport client and rxjs; put framework-specific code in the package that
+  owns the framework.
 - TDD: write a failing test first, then the minimal implementation. Do not
   weaken or delete an assertion to make a test pass — fix the code.
 - The controller returns strings and RxJS `Observable`s only (no raw
@@ -111,7 +152,8 @@ live under `packages/`:
 
 ## Gotchas (hard-won; read before touching these areas)
 
-- **`node:repl` on Node 20+**: `server.eval`'s callback never fires for a
+- **`node:repl` on Node 20+** (`packages/core/src/session/repl-session.ts`):
+  `server.eval`'s callback never fires for a
   synchronous top-level `throw`. Completion is detected via a per-session
   random sentinel prompt, and genuine incomplete input is detected via the
   REPL's buffered-command state (not a transient continuation prompt). Preserve

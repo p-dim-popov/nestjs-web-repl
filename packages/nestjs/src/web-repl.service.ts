@@ -13,6 +13,7 @@ import {
   TOPICS,
   DEFAULTS,
   EventRingBuffer,
+  ReplSession,
   type WebReplAdapter,
   type CmdMessage,
   type OutMessage,
@@ -20,7 +21,6 @@ import {
   type WebReplEvent,
 } from '@remote-repl/core';
 import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
-import { ReplSession } from '@remote-repl/core';
 
 type ContextFactory = () => Record<string, unknown>;
 
