@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { INestApplication, BadRequestException } from '@nestjs/common';
 import { of } from 'rxjs';
 import request from 'supertest';
-import { WebReplController, toSseFrame, randomChannelName, landingRedirectUrl } from './web-repl.controller';
+import { WebReplController } from './web-repl.controller';
 import { WebReplService } from './web-repl.service';
 import { WEB_REPL_OPTIONS } from './constants';
 import { renderReplUi } from '@remote-repl/core';
@@ -150,77 +150,6 @@ describe('WebReplController', () => {
     it('GET /repl (landing) returns 404 when disabled', async () => {
       const res = await request(disabledApp.getHttpServer()).get('/repl');
       expect(res.status).toBe(404);
-    });
-  });
-
-  // IMPORTANT 2: a heartbeat frame (WebReplEvent with id: 0) must not
-  // clobber the browser EventSource's reconnection cursor. Naively
-  // *omitting* `id` doesn't work here -- @nestjs/core's SseStream
-  // auto-assigns its own disconnected monotonic counter to any message
-  // with no id (verified against node_modules/@nestjs/core), which would
-  // reproduce the same "reconnect replays everything" bug through a
-  // different number. Instead each heartbeat must be stamped with the id
-  // of the last real event actually sent on that connection (or the
-  // client's own reconnect cursor if no real event has flowed yet), which
-  // is idempotent for Last-Event-ID per the SSE spec. Asserted directly
-  // against the extracted pure mapping function since asserting on the raw
-  // SSE `id:` line for the *auto-assignment* pitfall specifically is
-  // covered by the end-to-end test below.
-  describe('toSseFrame (SSE event mapping)', () => {
-    it('stamps the heartbeat sentinel event (id: 0) with the supplied lastRealId', () => {
-      const frame = toSseFrame(
-        { id: 0, type: 'system', commandId: null, data: { ping: true } },
-        5,
-      );
-      expect(frame.id).toBe('5');
-    });
-
-    it('stamps a fresh-connection heartbeat (no real event sent yet) with "0"', () => {
-      const frame = toSseFrame(
-        { id: 0, type: 'system', commandId: null, data: { ping: true } },
-        0,
-      );
-      expect(frame.id).toBe('0');
-    });
-
-    it('uses the event\'s own id for a normal (non-heartbeat) event, ignoring lastRealId', () => {
-      const frame = toSseFrame({ id: 7, type: 'output', commandId: 'cmd_1', data: 'hi' }, 3);
-      expect(frame.id).toBe('7');
-    });
-  });
-
-  describe('randomChannelName', () => {
-    it('returns exactly 8 lowercase base36 characters, every time', () => {
-      for (let i = 0; i < 200; i++) {
-        expect(randomChannelName()).toMatch(/^[a-z0-9]{8}$/);
-      }
-    });
-
-    it('varies between calls', () => {
-      const names = new Set(Array.from({ length: 20 }, () => randomChannelName()));
-      expect(names.size).toBeGreaterThan(1);
-    });
-  });
-
-  describe('landingRedirectUrl', () => {
-    it('appends the channel and /ui to the request path', () => {
-      expect(landingRedirectUrl('/repl', 'k3f9x2ab')).toBe('/repl/k3f9x2ab/ui');
-    });
-
-    it('normalizes a trailing slash', () => {
-      expect(landingRedirectUrl('/repl/', 'k3f9x2ab')).toBe('/repl/k3f9x2ab/ui');
-    });
-
-    it('preserves a global prefix', () => {
-      expect(landingRedirectUrl('/api/repl', 'k3f9x2ab')).toBe('/api/repl/k3f9x2ab/ui');
-    });
-
-    it('drops the query string', () => {
-      expect(landingRedirectUrl('/repl?foo=1', 'k3f9x2ab')).toBe('/repl/k3f9x2ab/ui');
-    });
-
-    it('strips the query string before the trailing slash', () => {
-      expect(landingRedirectUrl('/repl/?foo=1', 'k3f9x2ab')).toBe('/repl/k3f9x2ab/ui');
     });
   });
 

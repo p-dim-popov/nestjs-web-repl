@@ -23,3 +23,11 @@ describe('@remote-repl/core barrel: UI', () => {
     expect(core.resolveMonacoFile('loader.js')).not.toBeNull();
   });
 });
+
+describe('@remote-repl/core barrel: HTTP helpers', () => {
+  it('exports the SSE frame mapper and the landing helpers', () => {
+    expect(core.toSseFrame({ id: 1, type: 'output', commandId: null, data: 'x' }, 0).id).toBe('1');
+    expect(core.randomChannelName()).toHaveLength(8);
+    expect(core.landingRedirectUrl('/repl', 'abc')).toBe('/repl/abc/ui');
+  });
+});

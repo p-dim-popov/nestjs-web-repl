@@ -23,3 +23,8 @@ export { InMemoryWebReplAdapter } from './transport/in-memory.adapter';
 export { renderReplUi } from './ui/repl-ui.html';
 export { monacoVsDir, resolveMonacoFile } from './ui/monaco-assets';
 export type { MonacoAsset } from './ui/monaco-assets';
+
+// Framework-free HTTP helpers (SSE frame mapping, landing redirect)
+export { toSseFrame } from './http/sse-frame';
+export type { SseFrame } from './http/sse-frame';
+export { randomChannelName, landingRedirectUrl } from './http/landing';
