@@ -47,4 +47,14 @@ describe('NodeRedisWebReplAdapter', () => {
     expect(pub.duplicates).toHaveLength(1);
     expect(pub.duplicates[0].connectCount).toBe(1);
   });
+
+  it('quits the subscriber exactly once when destroyed twice concurrently (Nest hook + service both call it)', async () => {
+    const bus = new FakeRedisBus();
+    const pub = new FakeNodeRedis(bus);
+    const b = new NodeRedisWebReplAdapter(pub);
+    await b.subscribe('webrepl:out', () => {});
+    // A real client throws on a second quit(); both calls must settle cleanly.
+    await expect(Promise.all([b.onModuleDestroy(), b.onModuleDestroy()])).resolves.toBeDefined();
+    expect(pub.duplicates[0].quitCount).toBe(1);
+  });
 });

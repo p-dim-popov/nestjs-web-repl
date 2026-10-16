@@ -37,9 +37,9 @@ export class IoRedisWebReplAdapter extends BaseRedisWebReplAdapter {
   }
 
   protected async teardown(): Promise<void> {
-    if (this.subscriber) {
-      await this.subscriber.quit();
-      this.subscriber = undefined;
-    }
+    // Detach before awaiting quit() -- see NodeRedisWebReplAdapter.teardown.
+    const sub = this.subscriber;
+    this.subscriber = undefined;
+    if (sub) await sub.quit();
   }
 }

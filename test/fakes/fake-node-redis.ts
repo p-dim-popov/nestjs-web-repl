@@ -31,6 +31,7 @@ export class FakeRedisBus {
 export class FakeNodeRedis implements NodeRedisLike {
   connected = false;
   quitCalled = false;
+  quitCount = 0;
   connectCount = 0;
   readonly duplicates: FakeNodeRedis[] = [];
   private readonly own: Array<[string, Listener]> = [];
@@ -59,7 +60,9 @@ export class FakeNodeRedis implements NodeRedisLike {
   }
 
   async quit(): Promise<void> {
+    if (this.quitCalled) throw new Error('The client is closed');
     this.quitCalled = true;
+    this.quitCount++;
     this.bus.remove(this.own);
     this.connected = false;
   }

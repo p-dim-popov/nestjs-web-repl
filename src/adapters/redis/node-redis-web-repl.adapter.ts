@@ -44,10 +44,13 @@ export class NodeRedisWebReplAdapter extends BaseRedisWebReplAdapter {
   }
 
   protected async teardown(): Promise<void> {
-    if (this.subscriber) {
-      await this.subscriber.quit();
-      this.subscriber = undefined;
-      this.connecting = undefined;
-    }
+    // Detach BEFORE awaiting quit(): Nest invokes onModuleDestroy on this
+    // adapter (it is a provider) AND WebReplService calls it again, so two
+    // teardowns run concurrently on shutdown. A real client throws on a
+    // second quit(); clearing the field first makes the second call a no-op.
+    const sub = this.subscriber;
+    this.subscriber = undefined;
+    this.connecting = undefined;
+    if (sub) await sub.quit();
   }
 }

@@ -38,4 +38,23 @@ describe('IoRedisWebReplAdapter', () => {
     expect(received).toEqual([]);
     await expect(pubB.publish('webrepl:out', 'again')).resolves.toBeTypeOf('number');
   });
+
+  it('quits the subscriber exactly once when destroyed twice concurrently', async () => {
+    const pub = client();
+    let quits = 0;
+    const duplicate = pub.duplicate.bind(pub);
+    pub.duplicate = () => {
+      const sub = duplicate();
+      const quit = sub.quit.bind(sub);
+      sub.quit = async () => {
+        if (quits++ > 0) throw new Error('Connection is closed.');
+        return quit();
+      };
+      return sub;
+    };
+    const b = new IoRedisWebReplAdapter(pub);
+    await b.subscribe('webrepl:out', () => {});
+    await expect(Promise.all([b.onModuleDestroy(), b.onModuleDestroy()])).resolves.toBeDefined();
+    expect(quits).toBe(1);
+  });
 });
