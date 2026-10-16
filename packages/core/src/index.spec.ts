@@ -9,3 +9,10 @@ describe('@remote-repl/core barrel', () => {
     expect(new core.EventRingBuffer(2).isEmpty()).toBe(true);
   });
 });
+
+describe('@remote-repl/core barrel: session and transport', () => {
+  it('exports ReplSession and the in-memory adapter', () => {
+    expect(typeof core.ReplSession).toBe('function');
+    expect(typeof core.InMemoryWebReplAdapter).toBe('function');
+  });
+});

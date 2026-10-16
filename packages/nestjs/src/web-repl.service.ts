@@ -20,7 +20,7 @@ import {
   type WebReplEvent,
 } from '@remote-repl/core';
 import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
-import { ReplSession } from './session/repl-session';
+import { ReplSession } from '@remote-repl/core';
 
 type ContextFactory = () => Record<string, unknown>;
 

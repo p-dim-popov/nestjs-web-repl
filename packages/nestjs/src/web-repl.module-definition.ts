@@ -11,7 +11,7 @@ import type {
   WebReplModuleExtras,
   WebReplAdapterConfig,
 } from './interfaces/web-repl-options.interface';
-import { InMemoryWebReplAdapter } from './adapters/in-memory-web-repl.adapter';
+import { InMemoryWebReplAdapter } from '@remote-repl/core';
 import { WebReplService } from './web-repl.service';
 import { WebReplController } from './web-repl.controller';
 import { buildReplContext } from './context/build-repl-context';

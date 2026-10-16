@@ -4,7 +4,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { WebReplModule } from '../src/web-repl.module';
-import { InMemoryWebReplAdapter } from '../src/adapters/in-memory-web-repl.adapter';
+import { InMemoryWebReplAdapter } from '@remote-repl/core';
 
 // Boots a real, listening Nest app wired to WebReplModule, sharing the given
 // adapter instance with any other app booted the same way. Because

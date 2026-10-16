@@ -1,4 +1,4 @@
-import { InMemoryWebReplAdapter } from './in-memory-web-repl.adapter';
+import { InMemoryWebReplAdapter } from './in-memory.adapter';
 
 describe('InMemoryWebReplAdapter', () => {
   it('delivers a published message to a subscriber on the same topic', async () => {

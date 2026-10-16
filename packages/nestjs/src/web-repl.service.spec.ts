@@ -2,7 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { firstValueFrom, toArray } from 'rxjs';
 import { take } from 'rxjs/operators';
 import { WebReplService } from './web-repl.service';
-import { InMemoryWebReplAdapter } from './adapters/in-memory-web-repl.adapter';
+import { InMemoryWebReplAdapter } from '@remote-repl/core';
 import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
 
 const makeService = async (

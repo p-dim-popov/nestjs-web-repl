@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import type { WebReplAdapter } from '@remote-repl/core';
+import type { WebReplAdapter } from '../protocol/adapter';
 
 export class InMemoryWebReplAdapter implements WebReplAdapter {
   private readonly emitter = new EventEmitter();
