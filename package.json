@@ -13,7 +13,7 @@
     "build": "npm run build --workspaces",
     "test": "npm test --workspaces",
     "typecheck": "npm run typecheck --workspaces",
-    "example": "npm run example --workspace nestjs-web-repl",
+    "example": "npm run example --workspace @remote-repl/nestjs",
     "example:express": "npm run example --workspace @remote-repl/express",
     "schema:check": "npm run schema:check --workspace @remote-repl/core"
   },

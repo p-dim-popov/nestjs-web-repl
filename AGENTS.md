@@ -107,13 +107,18 @@ live under `packages/`:
     route.
   - `src/http/` — the framework-free HTTP layer. `handlers.ts` is the
     shared route-handler layer every framework adapter wires to:
-    `createReplHandlers(engine, { enabled })` returns five plain-data
-    handlers — `landing(requestUrl) → redirectUrl`, `post(channel, body) →
-    Promise<{commandId}>`, `stream(channel, lastEventId) →
-    AsyncIterableIterator<string>` (ready-to-send SSE text frames, owns the
-    heartbeat id-stamping; the adapter MUST call `return()` on disconnect,
-    that is what closes the engine subscription), `ui(channel) → html`,
-    `asset(relativePath) → MonacoAsset | null`. Error contract: every
+    `createReplHandlers(engine, { enabled })` returns plain-data handlers —
+    `landing(requestUrl) → redirectUrl`, `post(channel, body) →
+    Promise<{commandId}>`, `streamFrames(channel, lastEventId) →
+    AsyncIterableIterator<SseFrame>` (owns the heartbeat id-stamping; for
+    SSE layers that take `{id,type,data}` objects, e.g. Nest's
+    `MessageEvent`), `stream(channel, lastEventId) →
+    AsyncIterableIterator<string>` (`sseFrameToText` over `streamFrames`:
+    ready-to-send SSE text frames), `ui(channel) → html`,
+    `asset(relativePath) → MonacoAsset | null`. Both stream variants open
+    the engine stream eagerly and the adapter MUST call `return()` on
+    disconnect — that is what closes the engine subscription. The `engine`
+    argument is structural: `{ dispatch, events }`. Error contract: every
     handler throws `ReplDisabledError` when disabled (synchronously, except
     `post`, which is always async and rejects — also with
     `InvalidCommandError` for a bad body → 400). Adapters map errors to
@@ -176,27 +181,42 @@ live under `packages/`:
     disabled engine subscribes to nothing, auth middleware in front → 401).
   - `example/main.ts` — runnable host app: `REPL_ENABLED` (default off),
     bearer-token middleware in front, `CatService` exposed via `context`.
-- `packages/nestjs/` — the `nestjs-web-repl` package (future
-  `@remote-repl/nestjs`), with its own `package.json`, `tsconfig*.json` and
-  `vitest.config.ts`. Depends on `@remote-repl/core` and re-exports what its
-  public API needs (`InMemoryWebReplAdapter`, `WebReplAdapter`,
-  `WebReplEvent`, `SseEventType`), so `import { WebReplModule } from
-  'nestjs-web-repl'` is unchanged. `src/redis.ts` (the `nestjs-web-repl/redis`
-  subpath) is a one-line `export * from '@remote-repl/redis'`, pinned by
-  `src/redis.spec.ts`. Paths below are relative to it.
+- `packages/nestjs/` — `@remote-repl/nestjs` (private until the per-package
+  release design lands), with its own `package.json`, `tsconfig*.json` and
+  `vitest.config.ts`. The root `example` script addresses it by this name.
+  The unscoped `nestjs-web-repl` package name is NOT resolvable inside the
+  workspace right now: nothing in the repo imports it (the example and
+  tests import `../src`; `examples/stackblitz/` targets the published
+  package) and the re-export shim that will own that name is a separate
+  ticket. Depends on `@remote-repl/core` and re-exports what its public API
+  needs (`InMemoryWebReplAdapter`, `WebReplAdapter`, `WebReplEvent`,
+  `SseEventType`), so `import { WebReplModule } from ...` keeps working
+  through the shim. `src/redis.ts` (the `./redis` subpath) is a one-line
+  `export * from '@remote-repl/redis'`, pinned by `src/redis.spec.ts`. rxjs
+  is a peer of THIS package (the Observable adaptation lives here), never of
+  core. Paths below are relative to it.
   - `src/web-repl.service.ts` — `WebReplService extends RemoteReplEngine`:
     the thin Nest face of core's engine. DI construction (passes
     `new Logger('WebReplService')`), `onModuleInit`/`onModuleDestroy` →
     `start()`/`stop()`, `ReplDisabledError` → `NotFoundException` (a
     rejection from `dispatch()`, a synchronous throw from `stream()`), and
-    `stream()` as an RxJS `Observable` over the engine's `openStream()`.
-    No engine logic lives here. `src/web-repl.service.spec.ts` is the
+    `stream()` as an RxJS `Observable` over the engine's `openStream()`
+    (kept for consumers and its spec; the controller consumes `events()`
+    through the shared handlers instead). No engine logic lives here. `src/web-repl.service.spec.ts` is the
     behaviour-preservation gate for the engine extraction: it reaches
     engine internals by name (`channels`, `ownership`, `onCmd`, …), so the
     engine's members stay plain TS `private`, never `#private`.
-  - `src/web-repl.controller.ts` — the HTTP routes; SSE mapping; runtime
-    `enabled` guards; reflected-XSS-safe UI rendering. Uses core's UI, Monaco
-    and SSE helpers.
+  - `src/web-repl.controller.ts` — thin HTTP wiring over core's
+    `createReplHandlers(service, options)`: Nest params in, core errors out
+    (`ReplDisabledError` → `NotFoundException`, `InvalidCommandError` →
+    `BadRequestException(message)`). No route logic lives here. The SSE
+    route adapts `handlers.streamFrames()`'s async iterator to the
+    `Observable<MessageEvent>` that `@Sse()` expects (unsubscribe →
+    `iterator.return()`); the controller still returns only strings and
+    Observables (no raw req/res). Runtime `enabled` enforcement comes from
+    the handlers reading the shared options object on every call — keep
+    passing `options` itself, not a copy. Its spec mocks the service as
+    `{ dispatch, events }` (the handler engine surface), not `stream()`.
   - `src/web-repl.module.ts` + `src/web-repl.module-definition.ts` — `register` /
     `registerAsync` (ConfigurableModuleBuilder).
   - `src/context/build-repl-context.ts` — builds the app-wide REPL context.

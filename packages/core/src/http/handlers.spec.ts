@@ -183,6 +183,60 @@ describe('createReplHandlers: stream', () => {
   });
 });
 
+describe('createReplHandlers: streamFrames', () => {
+  const frameIds = (frames: { id: string }[]) => frames.map((f) => f.id);
+  const drainFrames = async (iter: AsyncIterable<{ id: string; type: string; data: string }>) => {
+    const frames: { id: string; type: string; data: string }[] = [];
+    for await (const f of iter) frames.push(f);
+    return frames;
+  };
+
+  it('passes the channel and cursor to the engine and yields structured SSE frames', async () => {
+    const { engine } = engineWithEvents([out(7)]);
+    const h = createReplHandlers(engine, { enabled: true });
+    const frames = await drainFrames(h.streamFrames('chanA', 3));
+    expect(engine.events).toHaveBeenCalledWith('chanA', 3);
+    expect(frames).toEqual([
+      { id: '7', type: 'message', data: '{"id":7,"type":"output","commandId":"cmd_1","data":"hi"}' },
+    ]);
+  });
+
+  it("stamps heartbeats after a real event with that event's id (reference: id 5, 5, 5)", async () => {
+    const { engine } = engineWithEvents([out(5), ping, ping]);
+    const h = createReplHandlers(engine, { enabled: true });
+    expect(frameIds(await drainFrames(h.streamFrames('chanA', null)))).toEqual(['5', '5', '5']);
+  });
+
+  it("stamps a heartbeat before any real event with the client's own cursor", async () => {
+    const { engine } = engineWithEvents([ping, out(7), ping]);
+    const h = createReplHandlers(engine, { enabled: true });
+    expect(frameIds(await drainFrames(h.streamFrames('chanA', 5)))).toEqual(['5', '7', '7']);
+  });
+
+  it('stamps a heartbeat on a fresh connection (no cursor, nothing sent) with 0', async () => {
+    const { engine } = engineWithEvents([ping]);
+    const h = createReplHandlers(engine, { enabled: true });
+    expect(frameIds(await drainFrames(h.streamFrames('chanA', null)))).toEqual(['0']);
+  });
+
+  it('return() tears down the engine stream', async () => {
+    const { engine, returned } = engineWithEvents([out(1), out(2), out(3)]);
+    const h = createReplHandlers(engine, { enabled: true });
+    const iter = h.streamFrames('chanA', null);
+    await iter.next();
+    await iter.return?.(undefined);
+    expect(returned).toHaveBeenCalledTimes(1);
+    expect(await iter.next()).toEqual({ value: undefined, done: true });
+  });
+
+  it('throws ReplDisabledError synchronously when disabled and never touches the engine', () => {
+    const { engine } = engineWithEvents([]);
+    const h = createReplHandlers(engine, { enabled: false });
+    expect(() => h.streamFrames('chanA', null)).toThrow(ReplDisabledError);
+    expect(engine.events).not.toHaveBeenCalled();
+  });
+});
+
 describe('createReplHandlers: stream against the real engine', () => {
   it('return() while next() is pending settles it with done and releases the channel', async () => {
     const engine = new RemoteReplEngine(

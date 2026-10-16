@@ -66,7 +66,7 @@ describe('workspace layout', () => {
   });
 
   it('is reached from the workspace root by its package name', () => {
-    expect(pkgName()).toBe('nestjs-web-repl');
+    expect(pkgName()).toBe('@remote-repl/nestjs');
     expect(process.cwd().endsWith(join('packages', 'nestjs'))).toBe(true);
   });
 
