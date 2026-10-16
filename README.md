@@ -302,16 +302,32 @@ WebReplModule.register({
 **Two apps on one Redis.** The topics have no origin check, so two different
 apps that share one Redis exchange REPL output and ownership. Give each app's
 adapter its own topic `prefix`. The adapter prepends it verbatim to every topic
-name. The default is no prefix, which keeps the current behavior.
+name on the wire (`billing-api:webrepl:out`) and strips it again before the
+engine sees the message, so the engine stays unaware of prefixes. Replicas of
+one app must use the same prefix: apps with the same prefix behave as replicas,
+apps with different prefixes never see each other. The default is no prefix,
+which keeps the current topic names byte for byte.
 
 ```ts
 new IoRedisWebReplAdapter(client, { prefix: 'billing-api:' });
 new NodeRedisWebReplAdapter(client, { prefix: 'billing-api:' });
 ```
 
+**Logging.** A handler that throws on an inbound message (for example malformed
+JSON on a shared channel) never crashes the client or skips the other handlers;
+the adapter reports it. By default it reports through `console.error`. Pass a
+`logger` with `warn` and `error` methods to route it elsewhere, for example a
+Nest `Logger`:
+
+```ts
+new IoRedisWebReplAdapter(client, { prefix: 'billing-api:', logger: new Logger('WebRepl') });
+```
+
 `ioredis` and `redis` are optional peer dependencies. Install the one that you use.
 Both adapters extend a small shared base. To target another broker, subclass
-`BaseRedisWebReplAdapter` or implement `WebReplAdapter` directly.
+`BaseRedisWebReplAdapter` or implement `WebReplAdapter` directly. The adapters
+live in the `@remote-repl/redis` workspace package; the `nestjs-web-repl/redis`
+subpath re-exports them.
 
 The `adapter` extra also accepts a DI-configured provider, `{ useClass, imports? }`
 or `{ useFactory, inject?, imports? }`. A custom adapter can then get its own
