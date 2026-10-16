@@ -8,16 +8,18 @@ import {
 } from '@nestjs/common';
 import { Observable, Subject, defer, merge, from, interval } from 'rxjs';
 import { finalize, map } from 'rxjs/operators';
-import { WEB_REPL_ADAPTER, WEB_REPL_OPTIONS, WEB_REPL_CLOCK, TOPICS, DEFAULTS } from './constants';
-import type { WebReplAdapter } from './interfaces/web-repl-adapter.interface';
+import { WEB_REPL_ADAPTER, WEB_REPL_OPTIONS, WEB_REPL_CLOCK } from './constants';
+import {
+  TOPICS,
+  DEFAULTS,
+  EventRingBuffer,
+  type WebReplAdapter,
+  type CmdMessage,
+  type OutMessage,
+  type SysMessage,
+  type WebReplEvent,
+} from '@remote-repl/core';
 import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
-import type {
-  CmdMessage,
-  OutMessage,
-  SysMessage,
-  WebReplEvent,
-} from './interfaces/web-repl-messages.interface';
-import { EventRingBuffer } from './ring-buffer';
 import { ReplSession } from './session/repl-session';
 
 type ContextFactory = () => Record<string, unknown>;

@@ -19,7 +19,7 @@ import {
 import { map, type Observable } from 'rxjs';
 import { WEB_REPL_OPTIONS } from './constants';
 import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
-import type { WebReplEvent } from './interfaces/web-repl-messages.interface';
+import type { WebReplEvent } from '@remote-repl/core';
 import { WebReplService } from './web-repl.service';
 import { renderReplUi } from './ui/repl-ui.html';
 import { resolveMonacoFile } from './ui/monaco-assets';

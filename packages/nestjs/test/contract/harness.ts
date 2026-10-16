@@ -4,9 +4,9 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { WebReplModule } from '../../src/web-repl.module';
-import type { WebReplAdapter } from '../../src/interfaces/web-repl-adapter.interface';
+import type { WebReplAdapter } from '@remote-repl/core';
 import type { WebReplModuleOptions } from '../../src/interfaces/web-repl-options.interface';
-import type { WebReplEvent } from '../../src/interfaces/web-repl-messages.interface';
+import type { WebReplEvent } from '@remote-repl/core';
 
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 

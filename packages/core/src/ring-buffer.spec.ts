@@ -1,5 +1,5 @@
 import { EventRingBuffer } from './ring-buffer';
-import type { WebReplEvent } from './interfaces/web-repl-messages.interface';
+import type { WebReplEvent } from './protocol/messages';
 
 const ev = (id: number): WebReplEvent => ({ id, type: 'output', commandId: null, data: `e${id}` });
 

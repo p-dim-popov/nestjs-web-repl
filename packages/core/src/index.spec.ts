@@ -1,0 +1,11 @@
+import * as core from './index';
+
+// The barrel is the only seam consumers (the nestjs package today, other
+// framework adapters later) are allowed to import from.
+describe('@remote-repl/core barrel', () => {
+  it('exports the protocol constants and the ring buffer', () => {
+    expect(core.TOPICS.cmd).toBe('webrepl:cmd');
+    expect(core.DEFAULTS.replayBufferSize).toBe(200);
+    expect(new core.EventRingBuffer(2).isEmpty()).toBe(true);
+  });
+});

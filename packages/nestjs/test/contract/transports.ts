@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 import { createClient } from 'redis';
-import type { WebReplAdapter } from '../../src/interfaces/web-repl-adapter.interface';
+import type { WebReplAdapter } from '@remote-repl/core';
 import { IoRedisWebReplAdapter, NodeRedisWebReplAdapter } from '../../src/redis';
 import { REDIS_URL } from './harness';
 

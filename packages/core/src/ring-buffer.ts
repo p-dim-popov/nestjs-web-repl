@@ -1,4 +1,4 @@
-import type { WebReplEvent } from './interfaces/web-repl-messages.interface';
+import type { WebReplEvent } from './protocol/messages';
 
 export class EventRingBuffer {
   private readonly events: WebReplEvent[] = [];

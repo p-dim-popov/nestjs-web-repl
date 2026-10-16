@@ -16,7 +16,7 @@ import {
   type Instance,
 } from './harness';
 import type { WebReplModuleOptions } from '../../src/interfaces/web-repl-options.interface';
-import { TOPICS } from '../../src/constants';
+import { TOPICS } from '@remote-repl/core';
 import { transports, type Transport } from './transports';
 
 interface Pair {

@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import type { WebReplAdapter } from '../../interfaces/web-repl-adapter.interface';
+import type { WebReplAdapter } from '@remote-repl/core';
 
 type Handler = (message: string) => void;
 

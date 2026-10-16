@@ -1,0 +1,39 @@
+{
+  "name": "@remote-repl/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework-agnostic core of remote-repl: REPL sessions, protocol types, in-memory transport, browser UI and SSE helpers.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/p-dim-popov/nestjs-web-repl.git",
+    "directory": "packages/core"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-monaco.mjs",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "monaco-editor": "0.52.0",
+    "typescript": "^5",
+    "vitest": "^2"
+  }
+}

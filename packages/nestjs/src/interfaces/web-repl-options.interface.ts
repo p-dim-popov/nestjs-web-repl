@@ -1,5 +1,5 @@
 import type { ModuleMetadata, Type } from '@nestjs/common';
-import type { WebReplAdapter } from './web-repl-adapter.interface';
+import type { WebReplAdapter } from '@remote-repl/core';
 // Type-only import (erased at runtime — no circular dependency).
 import type { WebReplController } from '../web-repl.controller';
 

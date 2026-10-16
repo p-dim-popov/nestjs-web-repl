@@ -16,7 +16,7 @@ import { WebReplController } from './web-repl.controller';
 import { WebReplService } from './web-repl.service';
 import { WEB_REPL_ADAPTER } from './constants';
 import { InMemoryWebReplAdapter } from './adapters/in-memory-web-repl.adapter';
-import type { WebReplAdapter } from './interfaces/web-repl-adapter.interface';
+import type { WebReplAdapter } from '@remote-repl/core';
 
 const boot = async (mod: { module: unknown }): Promise<INestApplication> => {
   const testMod = await Test.createTestingModule({ imports: [mod as never] }).compile();
