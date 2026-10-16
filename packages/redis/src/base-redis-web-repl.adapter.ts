@@ -1,31 +1,45 @@
-import { Logger } from '@nestjs/common';
 import type { WebReplAdapter } from '@remote-repl/core';
 
 type Handler = (message: string) => void;
+
+/**
+ * Minimal logger surface the transports report through. Any object with
+ * `warn`/`error` fits: `console`, a Nest `Logger`, pino, a custom sink.
+ */
+export interface RedisWebReplLogger {
+  warn(message: string): void;
+  error(message: string): void;
+}
 
 export interface RedisWebReplAdapterOptions {
   /**
    * Prepended verbatim to every topic name on the wire (e.g. `'my-app:'`), so
    * two apps sharing one Redis never exchange REPL output or ownership.
-   * Default: none -- topic names are byte-identical to the service's own.
+   * Default: none -- topic names are byte-identical to the engine's own.
    */
   prefix?: string;
+  /**
+   * Where handler faults are reported. Default: `console` -- a fault is never
+   * silently swallowed, and the package carries no framework logger.
+   */
+  logger?: RedisWebReplLogger;
 }
 
 /**
  * Library-agnostic Redis pub/sub bridge. Subclasses wire the abstract hooks to a
- * concrete client. Topics are opaque; the service owns the `webrepl:*` names.
+ * concrete client. Topics are opaque; the engine owns the `webrepl:*` names.
  * The abstract hooks and `dispatch` speak WIRE topic names (prefix applied);
- * the public `publish`/`subscribe` speak the service's bare names.
+ * the public `publish`/`subscribe` speak the engine's bare names.
  */
 export abstract class BaseRedisWebReplAdapter implements WebReplAdapter {
   private readonly handlers = new Map<string, Set<Handler>>();
   private readonly subscribed = new Set<string>();
-  private readonly logger = new Logger(this.constructor.name);
+  private readonly logger: RedisWebReplLogger;
   private readonly prefix: string;
 
   constructor(options: RedisWebReplAdapterOptions = {}) {
     this.prefix = options.prefix ?? '';
+    this.logger = options.logger ?? console;
   }
 
   async publish(topic: string, message: string): Promise<void> {
@@ -59,7 +73,7 @@ export abstract class BaseRedisWebReplAdapter implements WebReplAdapter {
         // channel) must not escape into the client's message emitter and crash
         // the process, nor abort delivery to the remaining handlers.
         this.logger.error(
-          `web-repl adapter handler for "${topic}" threw: ${String(err)}`,
+          `[${this.constructor.name}] web-repl adapter handler for "${topic}" threw: ${String(err)}`,
         );
       }
     }
