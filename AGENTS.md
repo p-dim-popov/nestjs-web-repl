@@ -15,7 +15,9 @@ that lens — see "Security invariants" below.
 ## Setup, build, test
 
 - Install: `npm install`
-- Run tests: `npm test` (Vitest — unit specs under `src/`, e2e under `test/`)
+- Run tests: `npm test` (Vitest — unit specs under `src/`, e2e under `test/`).
+  `test/contract/` needs a reachable Redis (`docker run -d -p 6379:6379 redis:7-alpine`;
+  override the address with `REDIS_URL`).
 - Build: `npm run build` (emits `dist/` via `tsc`; must produce `dist/index.js`
   and `dist/index.d.ts`)
 - Typecheck only: `npx tsc -p tsconfig.build.json --noEmit`
@@ -40,7 +42,12 @@ consider a change complete.
 - `src/context/build-repl-context.ts` — builds the app-wide REPL context.
   Isolates two fragile `@nestjs/core` deep imports (see "Gotchas").
 - `src/adapters/`, `src/ring-buffer.ts`, `src/interfaces/`, `src/constants.ts`
-- `example/` — a runnable host app. `test/` — the two-instance e2e.
+- `example/` — a runnable host app. `test/` — the two-instance e2e (in-memory
+  adapter) and `test/contract/` — the contract suite: two real Nest instances
+  on a REAL Redis (`REDIS_URL`, default `redis://127.0.0.1:6379`), every
+  scenario run once per Redis transport. It pins the observable multi-instance
+  behavior (ownership, lease takeover, SSE replay, serialization, `enabled`,
+  prefix isolation) and must stay green through any refactor.
 - `src/cli/` — the `install-skill` CLI (`index.ts` dispatcher + `install-skill.ts`
   copy logic) exposed as the `nestjs-web-repl` bin.
 - `skill/SKILL.md` — the consumer-facing Claude Code skill shipped to package
