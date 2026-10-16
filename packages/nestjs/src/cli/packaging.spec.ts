@@ -51,3 +51,27 @@ describe('packaging', () => {
     expect(pkg.typesVersions['*'].redis).toEqual(['dist/redis.d.ts']);
   });
 });
+
+describe('workspace layout', () => {
+  // This package lives at packages/nestjs inside an npm-workspaces monorepo.
+  // The root manifest is private (never published) and owns the workspace.
+  const rootPkg = () =>
+    JSON.parse(
+      readFileSync(join(process.cwd(), '..', '..', 'package.json'), 'utf8'),
+    );
+
+  it('sits under a private workspace root that lists packages/*', () => {
+    expect(rootPkg().private).toBe(true);
+    expect(rootPkg().workspaces).toContain('packages/*');
+  });
+
+  it('is reached from the workspace root by its package name', () => {
+    expect(pkgName()).toBe('nestjs-web-repl');
+    expect(process.cwd().endsWith(join('packages', 'nestjs'))).toBe(true);
+  });
+
+  function pkgName(): string {
+    return JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'))
+      .name;
+  }
+});
