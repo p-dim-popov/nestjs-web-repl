@@ -3,7 +3,7 @@ import type { WebReplEvent } from '../protocol/messages';
 import { renderReplUi } from '../ui/repl-ui.html';
 import { resolveMonacoFile, type MonacoAsset } from '../ui/monaco-assets';
 import { landingRedirectUrl, randomChannelName } from './landing';
-import { sseFrameToText, toSseFrame } from './sse-frame';
+import { sseFrameToText, toSseFrame, type SseFrame } from './sse-frame';
 
 /** The part of the engine's public surface the handlers consume. */
 export interface ReplHandlerEngine {
@@ -62,13 +62,21 @@ export interface ReplHandlers {
    */
   post(channel: string, body: unknown): Promise<{ commandId: string }>;
   /**
-   * GET <base>/:channel (SSE). Yields ready-to-send SSE text frames: the
+   * GET <base>/:channel (SSE), structured form. Yields `SseFrame`s: the
    * replay since `lastEventId` (see `parseLastEventId`), then live events
    * and `{ping}` heartbeats stamped with the last real id sent on THIS
-   * connection (seeded from the client's cursor). Opens the engine stream
-   * eagerly; the adapter MUST call `return()` on disconnect -- that is what
-   * closes the engine subscription and lets the channel be GC'd. Throws
-   * `ReplDisabledError` synchronously when disabled.
+   * connection (seeded from the client's cursor). For adapters whose SSE
+   * layer wants `{id,type,data}` objects (e.g. Nest's `MessageEvent`)
+   * rather than wire text. Opens the engine stream eagerly; the adapter
+   * MUST call `return()` on disconnect -- that is what closes the engine
+   * subscription and lets the channel be GC'd. Throws `ReplDisabledError`
+   * synchronously when disabled.
+   */
+  streamFrames(channel: string, lastEventId: number | null): AsyncIterableIterator<SseFrame>;
+  /**
+   * GET <base>/:channel (SSE), wire form: `streamFrames()` serialised with
+   * `sseFrameToText`, i.e. ready-to-send text frames. Same contract
+   * (eager open, MUST `return()` on disconnect, sync `ReplDisabledError`).
    */
   stream(channel: string, lastEventId: number | null): AsyncIterableIterator<string>;
   /** GET <base>/:channel/ui: the browser UI (`text/html`), channel escaped. */
@@ -100,7 +108,7 @@ export function createReplHandlers(
       }
       return engine.dispatch(channel, command);
     },
-    stream(channel, lastEventId) {
+    streamFrames(channel, lastEventId) {
       assertEnabled();
       const source = engine.events(channel, lastEventId);
       // The id of the last real (non-heartbeat) event sent on this
@@ -108,28 +116,14 @@ export function createReplHandlers(
       // Seeded from the client's reconnect cursor (or 0 = nothing yet) so a
       // heartbeat fired before any real event is idempotent for the cursor.
       let lastRealId = lastEventId ?? 0;
-      // Hand-rolled rather than an async generator: a generator queues
-      // return() behind a pending next(), which would delay closing the
-      // engine subscription until the next event arrives.
-      const finish = async (): Promise<IteratorResult<string, undefined>> => {
-        await source.return?.(undefined);
-        return { value: undefined, done: true };
-      };
-      const iterator: AsyncIterableIterator<string> = {
-        async next() {
-          const result = await source.next();
-          if (result.done) return { value: undefined, done: true };
-          const frame = toSseFrame(result.value, lastRealId);
-          if (result.value.id !== 0) lastRealId = result.value.id;
-          return { value: sseFrameToText(frame), done: false };
-        },
-        return: finish,
-        throw: finish,
-        [Symbol.asyncIterator]() {
-          return iterator;
-        },
-      };
-      return iterator;
+      return mapIterator(source, (event) => {
+        const frame = toSseFrame(event, lastRealId);
+        if (event.id !== 0) lastRealId = event.id;
+        return frame;
+      });
+    },
+    stream(channel, lastEventId) {
+      return mapIterator(this.streamFrames(channel, lastEventId), sseFrameToText);
     },
     ui(channel) {
       assertEnabled();
@@ -140,4 +134,32 @@ export function createReplHandlers(
       return resolveMonacoFile(relativePath);
     },
   };
+}
+
+/**
+ * Lazily maps an async iterator. Hand-rolled rather than an async generator:
+ * a generator queues `return()` behind a pending `next()`, which would delay
+ * closing the engine subscription until the next event arrives.
+ */
+function mapIterator<T, U>(
+  source: AsyncIterableIterator<T>,
+  fn: (value: T) => U,
+): AsyncIterableIterator<U> {
+  const finish = async (): Promise<IteratorResult<U, undefined>> => {
+    await source.return?.(undefined);
+    return { value: undefined, done: true };
+  };
+  const iterator: AsyncIterableIterator<U> = {
+    async next() {
+      const result = await source.next();
+      if (result.done) return { value: undefined, done: true };
+      return { value: fn(result.value), done: false };
+    },
+    return: finish,
+    throw: finish,
+    [Symbol.asyncIterator]() {
+      return iterator;
+    },
+  };
+  return iterator;
 }
