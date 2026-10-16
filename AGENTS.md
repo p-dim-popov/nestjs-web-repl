@@ -28,6 +28,8 @@ workspace. Run everything from the workspace root.
   `dist/ui/vs/`, the Monaco copy made by its `scripts/copy-monaco.mjs`;
   `packages/nestjs` must produce `dist/index.js` and `dist/index.d.ts`)
 - Typecheck only: `npm run typecheck`
+- Protocol schema drift check: `npm run schema:check` (regenerates
+  `packages/core/schema/protocol.schema.json` from the TS types and diffs)
 - Run the example: `npm run example` (needs `REPL_ENABLED=true`; uses `ts-node`,
   which resolves `@remote-repl/core` from its built `dist/` — build first)
 - One package only: `npm run <script> --workspace <package-name>`
@@ -42,8 +44,9 @@ to `packages/core/dist` (`tsconfig.build.json` declares a project reference
 and runs `tsc -b`, so core is compiled first). Each package's
 `tsbuildinfo` lives inside its `dist/` so `rm -rf dist` is a true clean.
 
-The full suite, `npm run build`, and the typecheck must all be green before you
-consider a change complete.
+The full suite, `npm run build`, the typecheck and `npm run schema:check` (the
+protocol schema drift check) must all be green before you consider a change
+complete.
 
 ## Project layout
 
@@ -61,12 +64,21 @@ live under `packages/`:
   import only from the barrel `src/index.ts`. Paths relative to it:
   - `src/session/repl-session.ts` — one `node:repl` server per channel; the
     subtlest file in the repo (see "Gotchas").
-  - `src/protocol/` — the wire protocol: `messages.ts` (`WebReplEvent`,
-    `CmdMessage`, `OutMessage`, `SysMessage`), `adapter.ts` (the
-    `WebReplAdapter` transport interface; its optional `onModuleDestroy?`
-    hook keeps that name for compatibility), `constants.ts` (`TOPICS`,
-    `DEFAULTS`), `options.ts` (`WebReplOptions`, the framework-free options
-    shape).
+  - `src/protocol/` — the wire protocol: `messages.ts` (`CmdMessage`,
+    `OutMessage`, `SysMessage`, the `SseEvent`/`TransportEvent` discriminated
+    unions and the loose `WebReplEvent` the engine still works with),
+    `adapter.ts` (the `WebReplAdapter` transport interface; its optional
+    `onModuleDestroy?` hook keeps that name for compatibility), `constants.ts`
+    (`TOPICS`, `DEFAULTS`), `options.ts` (`WebReplOptions`, the framework-free
+    options shape).
+  - `PROTOCOL.md` — the versioned, language-neutral protocol spec (topics,
+    message shapes, ownership/lease semantics, SSE contract, versioning
+    rule). `schema/protocol.schema.json` is GENERATED from
+    `src/protocol/messages.ts` by `scripts/generate-schema.mjs`
+    (`npm run schema:generate`); `npm run schema:check` (root and CI) fails
+    on drift. When you change a wire type: regenerate, commit the schema,
+    update PROTOCOL.md's prose and bump its version (additive = minor,
+    breaking = major).
   - `src/ring-buffer.ts` — `EventRingBuffer`, the per-channel SSE replay buffer.
   - `src/transport/in-memory.adapter.ts` — `InMemoryWebReplAdapter`.
   - `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
