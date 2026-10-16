@@ -14,7 +14,9 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "schema",
+    "PROTOCOL.md"
   ],
   "repository": {
     "type": "git",
@@ -27,12 +29,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/copy-monaco.mjs",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "schema:generate": "node scripts/generate-schema.mjs",
+    "schema:check": "node scripts/generate-schema.mjs --check",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "ajv": "^8.20.0",
     "monaco-editor": "0.52.0",
+    "ts-json-schema-generator": "^2.9.0",
     "typescript": "^5",
     "vitest": "^2"
   }

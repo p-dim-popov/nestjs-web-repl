@@ -45,6 +45,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Protocol schema drift check
+        # Regenerates packages/core/schema/protocol.schema.json from the
+        # TypeScript protocol types and fails if the committed file differs.
+        run: npm run schema:check
+
       - name: Test
         run: npm test
 

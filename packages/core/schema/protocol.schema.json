@@ -1,0 +1,345 @@
+{
+  "$id": "https://github.com/p-dim-popov/nestjs-web-repl/blob/main/packages/core/schema/protocol.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "Topic": {
+      "type": "string",
+      "enum": [
+        "webrepl:cmd",
+        "webrepl:out",
+        "webrepl:sys"
+      ],
+      "description": "The three fixed transport topic names (see `TOPICS`)."
+    },
+    "SseEventType": {
+      "type": "string",
+      "enum": [
+        "command",
+        "output",
+        "system"
+      ]
+    },
+    "CommandEventData": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "instanceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "instanceId"
+      ],
+      "additionalProperties": false,
+      "description": "`data` of a `command` event: the echoed command and the instance that runs it."
+    },
+    "OutputEventData": {
+      "type": "string",
+      "description": "`data` of an `output` event: one raw chunk of REPL output, verbatim."
+    },
+    "DoneEventData": {
+      "type": "object",
+      "properties": {
+        "done": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "done"
+      ],
+      "additionalProperties": false,
+      "description": "`data` of the `system` event that ends every executed command."
+    },
+    "ErrorEventData": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false,
+      "description": "`data` of the `system` event emitted when a command could not execute."
+    },
+    "PingEventData": {
+      "type": "object",
+      "properties": {
+        "ping": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "ping"
+      ],
+      "additionalProperties": false,
+      "description": "`data` of the SSE-only heartbeat `system` event."
+    },
+    "CommandEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "command"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/CommandEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "Echo of a dispatched command, emitted by the owner right before it executes."
+    },
+    "OutputEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "output"
+        },
+        "commandId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "`null` only for a chunk written while no command was executing."
+        },
+        "data": {
+          "$ref": "#/definitions/OutputEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "A chunk of REPL output, tagged with the command executing when it was written."
+    },
+    "DoneEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "system"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/DoneEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "Completion signal, emitted once per executed command after its last output chunk."
+    },
+    "ErrorEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "system"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/ErrorEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "Failure signal: the command did not execute (e.g. the context factory threw)."
+    },
+    "PingEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number",
+          "const": 0
+        },
+        "type": {
+          "type": "string",
+          "const": "system"
+        },
+        "commandId": {
+          "type": "null"
+        },
+        "data": {
+          "$ref": "#/definitions/PingEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "SSE keep-alive. Local to one SSE connection: never published on a topic, never buffered for replay, always `id: 0` (the server stamps the SSE frame with the connection's last real id instead -- see PROTOCOL.md)."
+    },
+    "TransportEvent": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CommandEvent"
+        },
+        {
+          "$ref": "#/definitions/OutputEvent"
+        },
+        {
+          "$ref": "#/definitions/DoneEvent"
+        },
+        {
+          "$ref": "#/definitions/ErrorEvent"
+        }
+      ],
+      "description": "Every event that travels on the `webrepl:out` topic (and is replayable)."
+    },
+    "SseEvent": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/TransportEvent"
+        },
+        {
+          "$ref": "#/definitions/PingEvent"
+        }
+      ],
+      "description": "Every event that can appear as an SSE `data:` payload."
+    },
+    "WebReplEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "$ref": "#/definitions/SseEventType"
+        },
+        "commandId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {}
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "Structural superset of `SseEvent`: the engine's working type, where `data` is still untyped. Everything that is a valid `SseEvent` is a valid `WebReplEvent`; the reverse is what the schema rejects."
+    },
+    "CmdMessage": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "originInstanceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel",
+        "commandId",
+        "command",
+        "originInstanceId"
+      ],
+      "additionalProperties": false,
+      "description": "Published on `webrepl:cmd` by the instance that received the HTTP request."
+    },
+    "WireOutMessage": {
+      "$ref": "#/definitions/OutMessage%3CTransportEvent%3E",
+      "description": "The `webrepl:out` message exactly as it travels."
+    },
+    "OutMessage<TransportEvent>": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string"
+        },
+        "event": {
+          "$ref": "#/definitions/TransportEvent"
+        }
+      },
+      "required": [
+        "channel",
+        "event"
+      ],
+      "additionalProperties": false,
+      "description": "Published on `webrepl:out` by the channel's owner; fanned out to every instance. On the wire `event` is always a `TransportEvent` (`OutMessage<TransportEvent>`, the schema's shape); the engine works with the untyped default while it builds one."
+    },
+    "SysMessage": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "claim",
+            "release"
+          ]
+        },
+        "instanceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel",
+        "kind",
+        "instanceId"
+      ],
+      "additionalProperties": false,
+      "description": "Published on `webrepl:sys`: ownership `claim` (also the lease heartbeat) and `release`."
+    }
+  }
+}
