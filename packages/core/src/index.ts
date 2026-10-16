@@ -2,10 +2,24 @@
 export { TOPICS, DEFAULTS } from './protocol/constants';
 export type { WebReplAdapter } from './protocol/adapter';
 export type {
+  Topic,
   SseEventType,
+  CommandEventData,
+  OutputEventData,
+  DoneEventData,
+  ErrorEventData,
+  PingEventData,
+  CommandEvent,
+  OutputEvent,
+  DoneEvent,
+  ErrorEvent,
+  PingEvent,
+  TransportEvent,
+  SseEvent,
   WebReplEvent,
   CmdMessage,
   OutMessage,
+  WireOutMessage,
   SysMessage,
 } from './protocol/messages';
 export type { WebReplOptions } from './protocol/options';
