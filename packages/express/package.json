@@ -1,0 +1,50 @@
+{
+  "name": "@remote-repl/express",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Express router for remote-repl: mounts the live REPL (command endpoint, SSE stream, Monaco UI) onto any Express app.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/p-dim-popov/nestjs-web-repl.git",
+    "directory": "packages/express"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "example": "ts-node -T example/main.ts"
+  },
+  "dependencies": {
+    "@remote-repl/core": "^0.1.0"
+  },
+  "peerDependencies": {
+    "express": "^4.16 || ^5"
+  },
+  "devDependencies": {
+    "@types/express": "^5",
+    "@types/node": "^20",
+    "@types/supertest": "^6",
+    "express": "^5",
+    "supertest": "^7",
+    "ts-node": "^10.9.2",
+    "typescript": "^5",
+    "vitest": "^2"
+  }
+}
