@@ -124,3 +124,17 @@ This codebase was built with AI assistance (Claude Code, subagent-driven TDD)
 under human direction and review. See "How this was built" in `README.md`.
 Contributions — human or AI-assisted — are welcome; disclosure of AI assistance
 is required (see `CONTRIBUTING.md`).
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `p-dim-popov/nestjs-web-repl`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (labels named after the roles). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
