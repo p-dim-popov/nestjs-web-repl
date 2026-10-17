@@ -7,6 +7,9 @@
     "paths": {
       "@remote-repl/core": [
         "../core/src/index.ts"
+      ],
+      "@remote-repl/express": [
+        "../express/src/index.ts"
       ]
     }
   },

@@ -1,21 +1,33 @@
 ---
 name: nestjs-web-repl
-description: Use when wiring a live, in-process REPL into a NestJS app over HTTP via the nestjs-web-repl package — adding WebReplModule to AppModule, gating the REPL behind an environment flag, or calling/debugging its POST command, SSE stream, or browser-UI routes.
+description: Use when wiring a live, in-process REPL into a NestJS app over HTTP via @remote-repl/nestjs or its nestjs-web-repl shim — adding WebReplModule to AppModule, gating the REPL behind an environment flag, choosing the Redis transport for multiple instances, or calling/debugging its POST command, SSE stream, or browser-UI routes.
 ---
 
 # nestjs-web-repl
 
 ## Overview
 
-`nestjs-web-repl` exposes a live NestJS REPL over HTTP: a POST command endpoint,
-a Server-Sent Events output stream, and a Monaco browser UI, backed by real
-`@nestjs/core` REPL sessions running inside the host app.
+`@remote-repl/nestjs` exposes a live NestJS REPL over HTTP: a POST command
+endpoint, a Server-Sent Events output stream, and a Monaco browser UI, backed
+by real `@nestjs/core` REPL sessions running inside the host app.
+
+Two package names resolve to the same API:
+
+| Install                  | Import from              | Notes                                                          |
+| ------------------------ | ------------------------ | -------------------------------------------------------------- |
+| `@remote-repl/nestjs`    | `@remote-repl/nestjs`    | The implementation. Redis transports are in `@remote-repl/redis`. |
+| `nestjs-web-repl`        | `nestjs-web-repl`        | Compatibility shim: re-exports `@remote-repl/nestjs`; `nestjs-web-repl/redis` re-exports `@remote-repl/redis`. Existing installs keep working unchanged. |
+
+Use whichever name the project already has. New projects: `@remote-repl/nestjs`
+(plus `@remote-repl/redis` when needed). The examples below use the shim name
+because it is what most existing apps import; swap the names 1:1.
 
 ## When to use this skill
 
 - Adding `WebReplModule` to a NestJS `AppModule` for the first time.
 - Reviewing or writing the code that enables/disables the REPL (the security
   gate below is non-negotiable).
+- Running several replicas behind a load balancer (Redis transport, `prefix`).
 - Calling or troubleshooting the `POST`/SSE/browser-UI routes at runtime.
 - Running the package's own examples (there's a `ts-node`-vs-`tsx` gotcha).
 
@@ -37,7 +49,7 @@ Add the module to your `AppModule`:
 
 ```ts
 import { Module } from '@nestjs/common';
-import { WebReplModule } from 'nestjs-web-repl';
+import { WebReplModule } from 'nestjs-web-repl'; // or '@remote-repl/nestjs'
 
 @Module({
   imports: [
@@ -89,16 +101,24 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
 
 - **Authentication:** subclass `WebReplController`, decorate it with
   `@UseGuards(...)`, and pass it as `controller:` to `register`/`registerAsync`.
-  See "Securing it" in the package README.
+  See "Securing it" in the repository README.
 - **Multiple app instances** (load-balanced replicas): the default in-memory
-  adapter is per-process. For Redis, import a ready-made adapter from the
-  `nestjs-web-repl/redis` subpath — `IoRedisWebReplAdapter` (ioredis) or
-  `NodeRedisWebReplAdapter` (node-redis) — and pass it as the `adapter` extra in
-  the same `register` call:
+  adapter is per-process. For Redis, import a ready-made adapter from
+  `nestjs-web-repl/redis` (or `@remote-repl/redis`) — `IoRedisWebReplAdapter`
+  (ioredis) or `NodeRedisWebReplAdapter` (node-redis) — and pass it as the
+  `adapter` extra in the same `register` call:
   `register({ enabled, adapter: new IoRedisWebReplAdapter(client) })`. Hand it
-  one connected client; it owns its own subscriber connection. For any other
-  broker, supply a custom adapter (a ready instance, `{ useClass, imports }`, or
-  `{ useFactory, inject, imports }`). See "Adapter / multi-instance" in the README.
+  one connected client; it owns its own subscriber connection. `ioredis` /
+  `redis` are optional peers: install the one you use.
+- **Two apps on one Redis:** the topics have no origin check, so unrelated apps
+  sharing a Redis would exchange REPL output and ownership. Give each app's
+  adapter its own topic `prefix` (second constructor argument):
+  `new IoRedisWebReplAdapter(client, { prefix: 'billing-api:' })`. Replicas of
+  one app must share the same prefix; apps with different prefixes never see
+  each other. Default: no prefix.
+- **Other brokers:** supply a custom adapter (a ready instance,
+  `{ useClass, imports }`, or `{ useFactory, inject, imports }`) implementing
+  `WebReplAdapter`. See "Adapter / multi-instance" in the README.
 - **Options** (base path, TTLs, heartbeats) and **exported symbols:** see
   "Options" and "Exports" in the README.
 - **Runnable example gotcha:** run examples with `ts-node`, not `tsx` —
@@ -109,5 +129,10 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
 
 - Enabling the REPL unconditionally (or defaulting `enabled` to `true`) —
   always key it off an environment flag that defaults to off.
+- Running two different apps on one Redis without a `prefix` — they will share
+  channels and ownership.
+- Mixing `nestjs-web-repl` and `@remote-repl/nestjs` imports in one app — pick
+  one name; the shim re-exports the same objects, but two installs can resolve
+  to two copies.
 - Running a README example with `tsx` and hitting missing-provider/DI errors —
   use `ts-node` instead.

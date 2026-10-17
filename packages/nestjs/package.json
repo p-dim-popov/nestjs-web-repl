@@ -29,12 +29,8 @@
     },
     "./package.json": "./package.json"
   },
-  "bin": {
-    "nestjs-web-repl": "dist/cli/index.js"
-  },
   "files": [
-    "dist",
-    "skill"
+    "dist"
   ],
   "repository": {
     "type": "git",
@@ -70,10 +66,13 @@
     "@nestjs/core": "^11",
     "@nestjs/platform-express": "^11",
     "@nestjs/testing": "^11",
+    "@remote-repl/express": "^0.1.0",
     "@remote-repl/redis": "^0.1.0",
     "@swc/core": "^1.15.43",
+    "@types/express": "^5",
     "@types/node": "^20",
     "@types/supertest": "^6",
+    "express": "^5",
     "ioredis": "^5.11.1",
     "redis": "^5.12.1",
     "reflect-metadata": "^0.2",

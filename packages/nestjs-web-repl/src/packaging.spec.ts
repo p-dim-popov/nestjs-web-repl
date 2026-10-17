@@ -57,7 +57,7 @@ describe('nestjs-web-repl packaging', () => {
     });
   });
 
-  it('ships no bin (install-skill moved to the skills.sh flow)', () => {
+  it('ships no bin (skills install via skills.sh)', () => {
     expect(pkg.bin).toBeUndefined();
   });
 
