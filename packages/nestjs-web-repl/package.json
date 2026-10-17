@@ -64,8 +64,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@remote-repl/nestjs": "^2.3.2",
-    "@remote-repl/redis": "^0.1.0"
+    "@remote-repl/nestjs": "^1.0.0",
+    "@remote-repl/redis": "^1.0.0"
   },
   "peerDependencies": {
     "@nestjs/common": "^10 || ^11",

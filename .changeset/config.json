@@ -5,7 +5,6 @@
     { "repo": "p-dim-popov/remote-repl" }
   ],
   "commit": false,
-  "fixed": [["@remote-repl/nestjs", "nestjs-web-repl"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

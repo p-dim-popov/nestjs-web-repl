@@ -1,6 +1,6 @@
 {
   "name": "@remote-repl/nestjs",
-  "version": "2.3.2",
+  "version": "1.0.0",
   "description": "NestJS module for remote-repl: RemoteReplModule, controller and DI-container context builder (HTTP + SSE + Monaco UI).",
   "keywords": [
     "nestjs",
@@ -52,7 +52,7 @@
     "example": "ts-node -T example/main.ts"
   },
   "dependencies": {
-    "@remote-repl/core": "^0.1.0"
+    "@remote-repl/core": "^1.0.0"
   },
   "peerDependencies": {
     "@nestjs/common": "^10 || ^11",
@@ -64,8 +64,8 @@
     "@nestjs/core": "^11",
     "@nestjs/platform-express": "^11",
     "@nestjs/testing": "^11",
-    "@remote-repl/express": "^0.1.0",
-    "@remote-repl/redis": "^0.1.0",
+    "@remote-repl/express": "^1.0.0",
+    "@remote-repl/redis": "^1.0.0",
     "@swc/core": "^1.15.43",
     "@types/express": "^5",
     "@types/node": "^20",

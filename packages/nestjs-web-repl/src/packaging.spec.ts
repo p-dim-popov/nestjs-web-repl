@@ -17,14 +17,19 @@ describe('nestjs-web-repl packaging', () => {
     expect(process.cwd().endsWith(join('packages', 'nestjs-web-repl'))).toBe(true);
   });
 
-  it('versions in lockstep with @remote-repl/nestjs', () => {
-    expect(pkg.version).toBe(nestjsPkg.version);
+  // Versions are decoupled (ADR 0005): the shim stays on its own 2.x line and
+  // the @remote-repl packages start at 1.0.0. The shim follows them through
+  // caret ranges, never through a shared version number.
+  it('stays on its own 2.x line while the @remote-repl packages are on 1.x', () => {
+    expect(pkg.version).toMatch(/^2\./);
+    expect(nestjsPkg.version).toMatch(/^1\./);
+    expect(redisPkg.version).toMatch(/^1\./);
   });
 
-  it('depends on @remote-repl/nestjs and @remote-repl/redis with caret ranges, nothing else', () => {
+  it('depends on @remote-repl/nestjs and @remote-repl/redis with ^1.0.0 ranges, nothing else', () => {
     expect(pkg.dependencies).toEqual({
-      '@remote-repl/nestjs': `^${nestjsPkg.version}`,
-      '@remote-repl/redis': `^${redisPkg.version}`,
+      '@remote-repl/nestjs': '^1.0.0',
+      '@remote-repl/redis': '^1.0.0',
     });
   });
 
@@ -76,9 +81,9 @@ describe('nestjs-web-repl packaging', () => {
 });
 
 // Releases are driven by changesets (`.changeset/config.json` at the workspace
-// root), not semantic-release. The shim and @remote-repl/nestjs sit in one
-// `fixed` group so `changeset version` always writes them the same version,
-// and every package is public so `changeset publish` can ship it.
+// root), not semantic-release. No `fixed` or `linked` group: every package is
+// versioned by its own changesets, and every package is public so
+// `changeset publish` can ship it.
 describe('release wiring (changesets)', () => {
   const read = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
   const repoRoot = join(process.cwd(), '..', '..');
@@ -100,8 +105,20 @@ describe('release wiring (changesets)', () => {
     ]);
   });
 
-  it('ties the shim and @remote-repl/nestjs in a changesets fixed group', () => {
-    expect(config().fixed).toEqual([['@remote-repl/nestjs', 'nestjs-web-repl']]);
+  it('has no fixed or linked group', () => {
+    expect(config().fixed ?? []).toEqual([]);
+    expect(config().linked ?? []).toEqual([]);
+  });
+
+  it('the four @remote-repl packages are at 1.x and depend on each other with ^1.0.0', () => {
+    const scoped = manifests.filter((m) => m.name.startsWith('@remote-repl/'));
+    expect(scoped).toHaveLength(4);
+    for (const m of scoped) {
+      expect(m.version, m.name).toMatch(/^1\./);
+      for (const [dep, range] of Object.entries({ ...m.dependencies, ...m.devDependencies })) {
+        if (dep.startsWith('@remote-repl/')) expect(range, `${m.name} -> ${dep}`).toBe('^1.0.0');
+      }
+    }
   });
 
   it('publishes every package publicly from the main branch', () => {
