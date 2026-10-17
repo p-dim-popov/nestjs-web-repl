@@ -4,7 +4,6 @@ import request from 'supertest';
 import { RemoteReplController } from './remote-repl.controller';
 import { RemoteReplService } from './remote-repl.service';
 import { REMOTE_REPL_OPTIONS } from './constants';
-import { renderReplUi } from '@remote-repl/core';
 
 describe('RemoteReplController', () => {
   let app: INestApplication;
@@ -77,9 +76,11 @@ describe('RemoteReplController', () => {
     expect(res.status).toBe(404);
   });
 
-  it('escapes </script> in the channel to prevent breakout', () => {
-    const html = renderReplUi('</script><script>alert(1)</script>');
-    expect(html).not.toContain('</script><script>alert(1)'); // not present unescaped in the script context
+  it('escapes </script> in the channel to prevent breakout', async () => {
+    const channel = encodeURIComponent('</script><script>alert(1)</script>');
+    const res = await request(app.getHttpServer()).get(`/repl/${channel}/ui`);
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('</script><script>alert(1)'); // not present unescaped in the script context
   });
 
   it('GET /repl (no channel) redirects to a random channel UI', async () => {

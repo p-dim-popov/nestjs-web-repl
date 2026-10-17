@@ -1,6 +1,6 @@
 /**
  * Runtime options of the REPL engine -- the framework-free part of what a
- * host module (e.g. nestjs-web-repl's `WebReplModuleOptions`) accepts.
+ * framework package (e.g. `RemoteReplModuleOptions` in @remote-repl/nestjs) accepts.
  */
 export interface RemoteReplOptions {
   /** Required. When false the module is inert: every route 404s, no subscribe. */

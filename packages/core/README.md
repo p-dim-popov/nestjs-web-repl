@@ -1,9 +1,16 @@
 # @remote-repl/core
 
-The framework- and runtime-agnostic core of remote-repl: REPL sessions, the
-wire protocol types, the in-memory transport, the browser UI (page template and Monaco bundle) and the
-SSE helpers. Framework adapters (`nestjs-web-repl` today) build on it; it has
-no framework, transport-client or RxJS dependency.
+The framework- and runtime-agnostic core of remote-repl: the engine
+(`RemoteReplEngine`), the wire protocol types, the in-memory transport
+(`RemoteReplInMemoryTransport`), the browser UI (page template and Monaco
+bundle) and the shared route handlers (`createRemoteReplHandlers`). The
+framework packages (`@remote-repl/nestjs`, `@remote-repl/express`) build on
+it; it has no framework, transport-client or RxJS dependency.
+
+Install it directly only to write a new framework package or a new transport.
+A transport implements `RemoteReplTransport` (`publish`, `subscribe`, optional
+`close`). The engine uses the in-memory transport when none is given; a
+cluster of instances needs one from `@remote-repl/redis`.
 
 ## Protocol
 

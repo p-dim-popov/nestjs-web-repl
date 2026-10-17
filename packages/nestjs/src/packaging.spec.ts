@@ -185,3 +185,35 @@ describe('built output (when a dist exists)', () => {
     expect(stale).toEqual([]);
   });
 });
+
+// Ticket #36 / ADR 0005: the @remote-repl/* packages use the product's own
+// vocabulary. No export, identifier, file name, comment or README line in
+// them uses the two historical words in any spelling; the transport vocabulary
+// of GLOSSARY.md is used instead. The only tolerated token is the legacy
+// package / skill NAME `nestjs-web-repl` (PROTOCOL.md's legacy-wire note, the
+// shim's own package and the skill directory are outside these four
+// packages, or are that token). The pattern is assembled from fragments so
+// this guard does not trip itself.
+describe('vocabulary of the @remote-repl packages', () => {
+  const PACKAGES = ['core', 'nestjs', 'express', 'redis'];
+  const LEGACY_NAME = ['nestjs', 'web', 'repl'].join('-');
+  const FORBIDDEN = new RegExp(['web' + 'repl', 'web-' + 'repl', 'Adap' + 'ter'].join('|'), 'i');
+  const trackedFiles = (): string[] =>
+    execFileSync('git', ['ls-files', '-z', ...PACKAGES.map((p) => `packages/${p}`)], { cwd: repoRoot })
+      .toString('utf8')
+      .split('\0')
+      .filter(Boolean)
+      .filter((rel) => !rel.startsWith('packages/core/src/ui/vs/'))
+      .filter((rel) => existsSync(join(repoRoot, rel)));
+
+  it('no tracked file in core, nestjs, express or redis uses the legacy vocabulary', () => {
+    const offenders: string[] = [];
+    for (const rel of trackedFiles()) {
+      const body = readFileSync(join(repoRoot, rel), 'utf8').split(LEGACY_NAME).join('');
+      body.split('\n').forEach((line, i) => {
+        if (FORBIDDEN.test(line)) offenders.push(`${rel}:${i + 1}: ${line.trim()}`);
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+});
