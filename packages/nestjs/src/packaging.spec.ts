@@ -3,6 +3,14 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
+// `npm pack --json` prints an array of pack results up to npm 11 and, from
+// npm 12, an object keyed by package name. Accept both.
+const packedPaths = (packJson: string): string[] => {
+  const parsed = JSON.parse(packJson);
+  const result = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+  return (result as { files: { path: string }[] }).files.map((f) => f.path);
+};
+
 const read = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
 const repoRoot = join(process.cwd(), '..', '..');
 
@@ -16,9 +24,7 @@ describe('packaging', () => {
       cwd: process.cwd(),
       encoding: 'utf8',
     });
-    const paths: string[] = JSON.parse(out)[0].files.map(
-      (f: { path: string }) => f.path,
-    );
+    const paths: string[] = packedPaths(out);
     expect(paths.some((p) => p.startsWith('skill/') || p.includes('/cli/'))).toBe(false);
   });
 

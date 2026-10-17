@@ -32,6 +32,20 @@ jobs:
     name: Version or publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The contract and cross-framework suites run against a real Redis, as in
+    # ci.yml; without it the nestjs package's tests fail with ECONNREFUSED.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://127.0.0.1:6379
     permissions:
       contents: write
       pull-requests: write

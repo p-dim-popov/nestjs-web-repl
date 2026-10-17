@@ -2,6 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
+// `npm pack --json` prints an array of pack results up to npm 11 and, from
+// npm 12, an object keyed by package name. Accept both.
+const packedPaths = (packJson: string): string[] => {
+  const parsed = JSON.parse(packJson);
+  const result = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+  return (result as { files: { path: string }[] }).files.map((f) => f.path);
+};
+
 // `nestjs-web-repl` is the legacy package name, kept alive as a re-export
 // shim over @remote-repl/nestjs (+ @remote-repl/redis under ./redis) so an
 // existing install resolves identically. These pins moved here from
@@ -72,7 +80,7 @@ describe('nestjs-web-repl packaging', () => {
       cwd: process.cwd(),
       encoding: 'utf8',
     });
-    const paths: string[] = JSON.parse(out)[0].files.map((f: { path: string }) => f.path);
+    const paths: string[] = packedPaths(out);
     expect(paths).toContain('README.md');
     expect(paths).toContain('LICENSE');
     expect(paths).toContain('package.json');
