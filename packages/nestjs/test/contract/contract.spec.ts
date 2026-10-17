@@ -198,6 +198,12 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       const { a, b } = pair;
       const channel = uniqueChannel('serial');
       const sse = await openSse(b.port, channel);
+      // Establish the owner first. Two origins posting the first command of
+      // a brand-new channel at the same instant is the documented
+      // last-claim-wins window (PROTOCOL.md §5.2), where both execute their
+      // own command; this scenario is about serialization under one owner.
+      const warmUp = await a.post(channel, 'void 0');
+      await sse.waitFor(isDoneFor(warmUp.commandId));
       // The first command sleeps before producing output; the second (posted
       // via the other instance) must still wait for it to finish.
       const slow = await a.post(channel, "await new Promise(r => setTimeout(r, 400)); 'slow-done'");
@@ -205,7 +211,10 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       await sse.waitFor(isDoneFor(fast.commandId));
       sse.close();
 
-      const real = sse.frames.filter((f) => !isPing(f)).map((f) => f.event);
+      const real = sse.frames
+        .filter((f) => !isPing(f))
+        .map((f) => f.event)
+        .filter((e) => e.commandId !== warmUp.commandId);
       expect(real.map((e) => [e.type, e.commandId])).toEqual([
         ['command', slow.commandId],
         ['output', slow.commandId],
