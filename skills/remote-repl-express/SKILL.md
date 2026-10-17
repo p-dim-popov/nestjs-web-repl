@@ -78,8 +78,10 @@ Key points:
   `/repl`, `/repl/:channel`, `/repl/:channel/ui`, `/repl/:channel/vs/*`. The
   landing redirect uses `req.originalUrl`, so nested mounts and prefixes work.
 - **Context.** Pass either `context: { ... }` (a plain object; each session
-  gets a shallow copy) or `buildContext: () => ({ ... })` (called per session,
-  for lazily built or per-session values). Exactly one of the two.
+  gets a shallow copy) or `buildContext: () => ({ ... })` (a synchronous
+  function called once per session, returning a plain object; for lazily
+  built or per-session values; it cannot return a Promise). Exactly one of
+  the two.
 - **Lifecycle.** `await engine.start()` after construction, `await engine.stop()`
   on shutdown. Nothing starts implicitly.
 - **`enabled` lives on the engine.** The engine enforces it (rejects dispatch,

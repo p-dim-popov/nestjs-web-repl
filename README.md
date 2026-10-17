@@ -149,8 +149,9 @@ Four rules apply:
 - **You own the lifecycle.** Call `await engine.start()` after construction and
   `await engine.stop()` on shutdown. Nothing starts on its own.
 - **Context.** Pass `context: { ... }` (a plain object, each session gets a
-  shallow copy) or `buildContext: () => ({ ... })` (called per session). Pass
-  exactly one of the two.
+  shallow copy) or `buildContext: () => ({ ... })` (a synchronous function,
+  called once per session, returning a plain object). Pass exactly one of the
+  two.
 
 A runnable example is in [`packages/express/example/main.ts`](./packages/express/example/main.ts).
 It puts a demo bearer-token middleware in front of the router (`REPL_TOKEN`,
@@ -500,7 +501,7 @@ is available for options that need DI, for example to read a `ConfigService`.
 | `options`      | `WebReplOptions`                  | The engine options above.                                 |
 | `transport`    | `WebReplAdapter`                  | `InMemoryWebReplAdapter` or a Redis transport.            |
 | `context`      | `object`                          | The globals of every session (shallow copy per session). Exactly one of `context` / `buildContext`. |
-| `buildContext` | `() => object \| Promise<object>` | Called once per session.                                  |
+| `buildContext` | `() => object`                    | Called once per session, synchronously; returns the plain object that becomes the session's globals (no Promise). |
 | `logger`       | `{ warn, error }`                 | Default `console`.                                        |
 
 ## Exports
