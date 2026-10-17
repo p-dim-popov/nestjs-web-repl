@@ -11,6 +11,7 @@ export default defineConfig({
     alias: {
       '@remote-repl/core': resolve(__dirname, '../core/src/index.ts'),
       '@remote-repl/redis': resolve(__dirname, '../redis/src/index.ts'),
+      '@remote-repl/express': resolve(__dirname, '../express/src/index.ts'),
     },
   },
   test: {
