@@ -358,6 +358,27 @@ describe('RemoteReplEngine', () => {
     });
   });
 
+  describe('enabled', () => {
+    it('exposes the configured `enabled` flag read-only, so adapters derive it from the engine', async () => {
+      const on = await makeEngine('ON', new InMemoryWebReplAdapter());
+      expect(on.enabled).toBe(true);
+      await on.stop();
+      const off = new RemoteReplEngine(
+        { enabled: false, instanceId: 'OFF' },
+        new InMemoryWebReplAdapter(),
+        defaultContext,
+        undefined,
+        silentLogger,
+      );
+      expect(off.enabled).toBe(false);
+      // A getter only: nothing can flip the safety rail after construction.
+      expect(() => {
+        (off as { enabled: boolean }).enabled = true;
+      }).toThrow(TypeError);
+      expect(off.enabled).toBe(false);
+    });
+  });
+
   describe('when disabled at runtime', () => {
     const disabled = (transport: InMemoryWebReplAdapter) =>
       new RemoteReplEngine({ enabled: false, instanceId: 'D' }, transport, defaultContext, undefined, silentLogger);

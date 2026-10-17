@@ -212,7 +212,9 @@ change or that spec goes red. Packages live under `packages/`:
   and nothing else; `express` (`^4.16 || ^5`) is a PEER (pinned by
   `src/package-boundary.spec.ts`, which also forbids `@nestjs/*`, rxjs, redis
   clients). No decorators, no swc, no `reflect-metadata`. Paths relative to it:
-  - `src/repl-router.ts` — `createReplRouter({ engine, enabled })`. The user
+  - `src/repl-router.ts` — `createReplRouter({ engine })`; the router reads
+    `enabled` from `engine.enabled` (a read-only getter on `RemoteReplEngine`),
+    so there is no second flag to drift. The user
     mounts it (`app.use('/repl', router)`) and the MOUNT PATH IS THE BASE PATH
     (landing redirects via `req.originalUrl`; there is no base-path option).
     Routes: `GET /` landing 302, `POST /:channel` 202 (JSON parsing scoped to

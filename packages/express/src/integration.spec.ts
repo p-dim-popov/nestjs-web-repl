@@ -33,7 +33,7 @@ describe('createReplEngine + createReplRouter on a real Express app', () => {
     });
     await engine.start();
     const app = express();
-    app.use('/repl', createReplRouter({ engine, enabled: true }));
+    app.use('/repl', createReplRouter({ engine }));
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   });
@@ -83,7 +83,7 @@ describe('a disabled engine', () => {
     expect(subscribe).not.toHaveBeenCalled();
 
     const app = express();
-    app.use('/repl', createReplRouter({ engine, enabled: false }));
+    app.use('/repl', createReplRouter({ engine }));
     expect((await request(app).get('/repl')).status).toBe(404);
     expect((await request(app).post('/repl/x').send({ command: '1' })).status).toBe(404);
     expect((await request(app).get('/repl/x').set('Accept', 'text/event-stream')).status).toBe(404);
@@ -95,7 +95,7 @@ describe('a disabled engine', () => {
 
 describe('user middleware in front of the router', () => {
   it('an auth middleware can reject every REPL route with 401 before the router runs', async () => {
-    const engine = { dispatch: vi.fn(), events: vi.fn() };
+    const engine = { enabled: true, dispatch: vi.fn(), events: vi.fn() };
     const requireToken = (req: Request, res: Response, next: NextFunction) => {
       if (req.get('authorization') !== 'Bearer s3cret') {
         res.status(401).json({ statusCode: 401, message: 'Unauthorized' });
@@ -104,7 +104,7 @@ describe('user middleware in front of the router', () => {
       next();
     };
     const app = express();
-    app.use('/repl', requireToken, createReplRouter({ engine, enabled: true }));
+    app.use('/repl', requireToken, createReplRouter({ engine }));
 
     for (const path of ['/repl', '/repl/x/ui', '/repl/x/vs/loader.js']) {
       expect((await request(app).get(path)).status).toBe(401);

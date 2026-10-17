@@ -9,23 +9,31 @@ import {
   type ReplHandlerEngine,
 } from '@remote-repl/core';
 
+/**
+ * What the router needs from the engine: `dispatch` + `events` for the
+ * routes, and `enabled` for the HTTP-edge 404 gate. `RemoteReplEngine`
+ * satisfies it.
+ */
+export type ReplRouterEngine = ReplHandlerEngine & { readonly enabled: boolean };
+
 export interface ReplRouterOptions {
-  /** The engine (or anything with its `dispatch` + `events`) the routes drive. */
-  engine: ReplHandlerEngine;
   /**
-   * The same `enabled` the engine was built with. When false every route
-   * 404s (security invariant: `enabled` is enforced at runtime, here AND in
-   * the engine).
+   * The engine the routes drive. Its `enabled` is the router's too: when
+   * false every route 404s (security invariant: `enabled` is enforced at
+   * runtime, here AND in the engine), and there is no second flag to get
+   * out of step with it.
    */
-  enabled: boolean;
+  engine: ReplRouterEngine;
 }
+
+const NOT_FOUND = Object.freeze({ statusCode: 404, message: 'Not Found' });
 
 // Maps the shared handlers' errors to HTTP; anything else goes to Express's
 // error pipeline. Explicit (rather than relying on Express 5's promise
 // forwarding) so the router behaves identically on Express 4.
 function sendError(err: unknown, res: Response, next: NextFunction): void {
   if (err instanceof ReplDisabledError) {
-    res.status(404).json({ statusCode: 404, message: 'Not Found' });
+    res.status(404).json(NOT_FOUND);
   } else if (err instanceof InvalidCommandError) {
     res.status(400).json({ statusCode: 400, message: err.message });
   } else {
@@ -34,7 +42,7 @@ function sendError(err: unknown, res: Response, next: NextFunction): void {
 }
 
 export function createReplRouter(options: ReplRouterOptions): Router {
-  const handlers = createReplHandlers(options.engine, { enabled: options.enabled });
+  const handlers = createReplHandlers(options.engine, { enabled: options.engine.enabled });
   const router = Router();
 
   // Landing: a visit with no channel gets a random one. `originalUrl` keeps
@@ -49,7 +57,11 @@ export function createReplRouter(options: ReplRouterOptions): Router {
 
   router.get('/:channel/ui', (req: Request, res: Response, next: NextFunction) => {
     try {
-      res.type('text/html').send(handlers.ui(String(req.params.channel)));
+      // Render before touching the response: `res.type()` would otherwise
+      // already have set text/html when a disabled engine makes `ui()` throw
+      // and the 404 JSON goes out.
+      const html = handlers.ui(String(req.params.channel));
+      res.type('text/html').send(html);
     } catch (err) {
       sendError(err, res, next);
     }
@@ -63,7 +75,7 @@ export function createReplRouter(options: ReplRouterOptions): Router {
     try {
       const asset = handlers.asset(String(req.params[1]));
       if (!asset) {
-        res.status(404).json({ statusCode: 404, message: 'Not Found' });
+        res.status(404).json(NOT_FOUND);
         return;
       }
       res.type(asset.contentType).send(asset.buffer);

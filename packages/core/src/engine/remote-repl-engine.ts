@@ -77,7 +77,7 @@ export class RemoteReplEngine {
   private readonly sessionTtl: number;
   private readonly replayBufferSize: number;
   private readonly heartbeatInterval: number;
-  private readonly enabled: boolean;
+  private readonly _enabled: boolean;
   private readonly ownership = new Map<string, string>();
   // Tracks, per channel, the clock() timestamp of the last claim/heartbeat
   // seen for its current owner -- the ownership *lease*. See onCmd's
@@ -88,6 +88,15 @@ export class RemoteReplEngine {
   private ownerHeartbeatTimer?: ReturnType<typeof setInterval>;
   private readonly channels = new Map<string, ChannelState>();
   private counter = 0;
+
+  /**
+   * The `enabled` the engine was built with. Framework adapters derive their
+   * own 404 gate from this (never from a second copy of the flag), so the two
+   * layers of the safety rail cannot disagree. Read-only by construction.
+   */
+  get enabled(): boolean {
+    return this._enabled;
+  }
 
   constructor(
     options: WebReplOptions,
@@ -100,7 +109,7 @@ export class RemoteReplEngine {
     this.sessionTtl = options.sessionTtl ?? DEFAULTS.sessionTtl;
     this.replayBufferSize = options.replayBufferSize ?? DEFAULTS.replayBufferSize;
     this.heartbeatInterval = options.heartbeatInterval ?? DEFAULTS.heartbeatInterval;
-    this.enabled = options.enabled;
+    this._enabled = options.enabled;
 
     this.ownerHeartbeatInterval = options.ownerHeartbeatInterval ?? DEFAULTS.ownerHeartbeatInterval;
     const requestedLeaseTtl = options.ownerLeaseTtl ?? DEFAULTS.ownerLeaseTtl;
@@ -135,7 +144,7 @@ export class RemoteReplEngine {
     // statically) -- so this runtime check is what keeps a config-driven
     // `enabled: false` from silently subscribing to the command bus and
     // executing arbitrary code.
-    if (!this.enabled) return;
+    if (!this._enabled) return;
     await this.adapter.subscribe(TOPICS.cmd, (m) => this.onCmd(this.parse<CmdMessage>(m)));
     await this.adapter.subscribe(TOPICS.out, (m) => this.onOut(this.parse<OutMessage>(m)));
     await this.adapter.subscribe(TOPICS.sys, (m) => this.onSys(this.parse<SysMessage>(m)));
@@ -187,7 +196,7 @@ export class RemoteReplEngine {
 
   /** Throws `ReplDisabledError` unless the engine was configured `enabled: true`. */
   protected assertEnabled(): void {
-    if (!this.enabled) throw new ReplDisabledError();
+    if (!this._enabled) throw new ReplDisabledError();
   }
 
   async dispatch(channel: string, command: string): Promise<{ commandId: string }> {

@@ -34,14 +34,14 @@ const engine = createReplEngine({
 await engine.start(); // no-op when disabled
 
 const app = express();
-app.use('/repl', requireAdmin, createReplRouter({ engine, enabled }));
+app.use('/repl', requireAdmin, createReplRouter({ engine }));
 app.listen(3000);
 ```
 
-The mount path is the base path. Pass the same `enabled` value to both calls:
-the engine refuses commands and streams, and the router returns 404 on every
-route. For several replicas, pass a transport from `@remote-repl/redis` instead
-of the in-memory one.
+The mount path is the base path. `enabled` is set once, on the engine: the
+engine refuses commands and streams, and the router reads `engine.enabled` and
+returns 404 on every route. For several replicas, pass a transport from
+`@remote-repl/redis` instead of the in-memory one.
 
 Full documentation, the options table and the security notes are in the
 repository README: https://github.com/p-dim-popov/nestjs-web-repl#readme

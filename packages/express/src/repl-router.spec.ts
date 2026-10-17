@@ -2,16 +2,42 @@ import express from 'express';
 import request from 'supertest';
 import { createReplRouter } from './repl-router';
 
-const fakeEngine = () => ({
+// The router reads `enabled` from the engine itself: there is no separate
+// option, so the two layers of the safety rail can never disagree.
+const fakeEngine = (enabled = true) => ({
+  enabled,
   dispatch: vi.fn(async () => ({ commandId: 'cmd_x' })),
   events: vi.fn(),
 });
 
-function mount(engine: ReturnType<typeof fakeEngine>, enabled = true) {
+function mount(engine: ReturnType<typeof fakeEngine>) {
   const app = express();
-  app.use('/repl', createReplRouter({ engine, enabled }));
+  app.use('/repl', createReplRouter({ engine }));
   return app;
 }
+
+describe('createReplRouter: `enabled` comes from the engine', () => {
+  it('404s every route when the engine is disabled, with no other option involved', async () => {
+    const engine = fakeEngine(false);
+    const app = mount(engine);
+    expect((await request(app).get('/repl')).status).toBe(404);
+    expect((await request(app).post('/repl/x').send({ command: '1+1' })).status).toBe(404);
+    expect((await request(app).get('/repl/x').set('Accept', 'text/event-stream')).status).toBe(404);
+    expect((await request(app).get('/repl/x/ui')).status).toBe(404);
+    expect((await request(app).get('/repl/x/vs/loader.js')).status).toBe(404);
+    expect(engine.dispatch).not.toHaveBeenCalled();
+    expect(engine.events).not.toHaveBeenCalled();
+  });
+
+  it('every 404 carries the same body', async () => {
+    const app = mount(fakeEngine(false));
+    for (const path of ['/repl', '/repl/x', '/repl/x/ui', '/repl/x/vs/loader.js']) {
+      expect((await request(app).get(path)).body).toEqual({ statusCode: 404, message: 'Not Found' });
+    }
+    const missingAsset = await request(mount(fakeEngine())).get('/repl/x/vs/nope.js');
+    expect(missingAsset.body).toEqual({ statusCode: 404, message: 'Not Found' });
+  });
+});
 
 describe('createReplRouter: POST /:channel', () => {
   it('accepts a command with 202 and returns commandId', async () => {
@@ -37,8 +63,8 @@ describe('createReplRouter: POST /:channel rejects bad bodies', () => {
   });
 
   it('returns 404 and never dispatches when disabled', async () => {
-    const engine = fakeEngine();
-    const res = await request(mount(engine, false)).post('/repl/chanA').send({ command: '1+1' });
+    const engine = fakeEngine(false);
+    const res = await request(mount(engine)).post('/repl/chanA').send({ command: '1+1' });
     expect(res.status).toBe(404);
     expect(engine.dispatch).not.toHaveBeenCalled();
   });
@@ -53,7 +79,7 @@ describe('createReplRouter: GET / (landing)', () => {
 
   it('uses whatever path the user mounted at as the base', async () => {
     const app = express();
-    app.use('/internal/debug/repl', createReplRouter({ engine: fakeEngine(), enabled: true }));
+    app.use('/internal/debug/repl', createReplRouter({ engine: fakeEngine() }));
     const res = await request(app).get('/internal/debug/repl');
     expect(res.headers.location).toMatch(/^\/internal\/debug\/repl\/[a-z0-9]{8}\/ui$/);
   });
@@ -66,7 +92,7 @@ describe('createReplRouter: GET / (landing)', () => {
   });
 
   it('returns 404 when disabled', async () => {
-    const res = await request(mount(fakeEngine(), false)).get('/repl');
+    const res = await request(mount(fakeEngine(false))).get('/repl');
     expect(res.status).toBe(404);
   });
 });
@@ -111,7 +137,7 @@ describe('createReplRouter: GET /:channel/ui and /:channel/vs/*', () => {
   });
 
   it('404s on both when disabled', async () => {
-    const app = mount(fakeEngine(), false);
+    const app = mount(fakeEngine(false));
     expect((await request(app).get('/repl/x/ui')).status).toBe(404);
     expect((await request(app).get('/repl/x/vs/loader.js')).status).toBe(404);
   });
@@ -166,8 +192,8 @@ describe('createReplRouter: GET /:channel (SSE)', () => {
   });
 
   it('returns 404 and never opens the engine stream when disabled', async () => {
-    const engine = fakeEngine();
-    const res = await request(mount(engine, false)).get('/repl/x').set('Accept', 'text/event-stream');
+    const engine = fakeEngine(false);
+    const res = await request(mount(engine)).get('/repl/x').set('Accept', 'text/event-stream');
     expect(res.status).toBe(404);
     expect(engine.events).not.toHaveBeenCalled();
   });

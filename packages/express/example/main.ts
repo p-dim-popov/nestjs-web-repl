@@ -36,7 +36,7 @@ async function bootstrap(): Promise<void> {
   app.get('/', (_req, res) => {
     res.type('text/plain').send('express example up; the REPL lives under /repl');
   });
-  app.use('/repl', requireReplToken, createReplRouter({ engine, enabled }));
+  app.use('/repl', requireReplToken, createReplRouter({ engine })); // 404s everything when the engine is disabled
 
   const server = app.listen(port, () => {
     // eslint-disable-next-line no-console

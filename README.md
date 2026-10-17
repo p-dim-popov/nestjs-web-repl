@@ -127,7 +127,7 @@ const engine = createReplEngine({
 await engine.start(); // no-op when disabled
 
 const app = express();
-app.use('/repl', requireAdmin, createReplRouter({ engine, enabled }));
+app.use('/repl', requireAdmin, createReplRouter({ engine }));
 //          ^ mount path = base path      ^ your auth middleware, in front
 
 const server = app.listen(3000);
@@ -143,9 +143,9 @@ Four rules apply:
   `/repl`, `/repl/:channel`, `/repl/:channel/ui` and `/repl/:channel/vs/*`.
   There is no separate base-path option. Nested mounts work, because the
   landing redirect uses `req.originalUrl`.
-- **Pass `enabled` to both calls.** The engine enforces it (it rejects commands
-  and refuses streams). The router enforces it again at the HTTP edge (404 on
-  every route). Compute the flag once and pass the same variable to both.
+- **`enabled` is set once, on the engine.** The engine enforces it (it rejects
+  commands and refuses streams). The router reads `engine.enabled` and enforces
+  it again at the HTTP edge (404 on every route). There is no second flag.
 - **You own the lifecycle.** Call `await engine.start()` after construction and
   `await engine.stop()` on shutdown. Nothing starts on its own.
 - **Context.** Pass `context: { ... }` (a plain object, each session gets a
@@ -269,7 +269,7 @@ WebReplModule.registerAsync({
 Put your middleware before the router in the same `app.use` call:
 
 ```ts
-app.use('/repl', requireAdmin, createReplRouter({ engine, enabled }));
+app.use('/repl', requireAdmin, createReplRouter({ engine }));
 ```
 
 The middleware runs in front of every route: the UI page, the SSE stream, the

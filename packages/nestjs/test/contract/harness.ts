@@ -54,7 +54,7 @@ export const bootExpressInstance = async (
   });
   await engine.start();
   const app = express();
-  app.use('/repl', createReplRouter({ engine, enabled }));
+  app.use('/repl', createReplRouter({ engine }));
   const server = app.listen(0);
   await new Promise<void>((r) => server.once('listening', () => r()));
   const { port } = server.address() as AddressInfo;

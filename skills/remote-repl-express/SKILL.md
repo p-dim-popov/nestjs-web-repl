@@ -18,7 +18,7 @@ Two exports:
 | Export                                   | Purpose                                                                 |
 | ---------------------------------------- | ----------------------------------------------------------------------- |
 | `createReplEngine({ options, transport, context \| buildContext, logger? })` | Builds the `RemoteReplEngine`. The caller owns `start()` / `stop()`.     |
-| `createReplRouter({ engine, enabled })`  | An Express `Router` with the five routes; mount it wherever you want the base path. |
+| `createReplRouter({ engine })`           | An Express `Router` with the five routes; mount it wherever you want the base path. It reads `enabled` from the engine. |
 
 ## When to use this skill
 
@@ -36,8 +36,9 @@ The library ships **no authentication** (intentional). Before mounting the
 router:
 
 - Gate it behind an environment flag so it is OFF by default:
-  `const enabled = process.env.REPL_ENABLED === 'true'`, and pass that same
-  value to BOTH `createReplEngine` (in `options`) and `createReplRouter`.
+  `const enabled = process.env.REPL_ENABLED === 'true'`, and pass it to
+  `createReplEngine` in `options`. The router derives its own 404 gate from
+  `engine.enabled`; there is no second flag to keep in step.
 - Never enable it in production without your own authentication or network
   restriction in front of the routes. Put your auth middleware **before** the
   router in the same `app.use(path, auth, router)` call.
@@ -61,7 +62,7 @@ const engine = createReplEngine({
 await engine.start(); // no-op when disabled
 
 const app = express();
-app.use('/repl', requireAdmin, createReplRouter({ engine, enabled }));
+app.use('/repl', requireAdmin, createReplRouter({ engine }));
 //          ^ mount path = base path      ^ your auth middleware, in front
 
 const server = app.listen(3000);
@@ -81,9 +82,9 @@ Key points:
   for lazily built or per-session values). Exactly one of the two.
 - **Lifecycle.** `await engine.start()` after construction, `await engine.stop()`
   on shutdown. Nothing starts implicitly.
-- **`enabled` goes to both.** The engine enforces it (rejects dispatch, refuses
-  streams); the router enforces it again at the HTTP edge (404). Compute the
-  flag once and pass the same variable to both calls.
+- **`enabled` lives on the engine.** The engine enforces it (rejects dispatch,
+  refuses streams); the router reads `engine.enabled` and enforces it again at
+  the HTTP edge (404 on every route). One flag, two layers.
 - Works on Express 4.16+ and Express 5 (peer range `^4.16 || ^5`).
 
 ## Use it
@@ -137,8 +138,6 @@ requests — a cookie/session, or a query token as in the package example).
 
 - Enabling the REPL unconditionally (or defaulting `enabled` to `true`) —
   always key it off an environment flag that defaults to off.
-- Passing `enabled` to the engine but not the router (or vice versa) — both
-  need it; a mismatch means one layer is open.
 - Mounting the router without auth in front — the library has none.
 - Forgetting `await engine.start()` — commands are accepted but no session
   runs them; or forgetting `engine.stop()` — the process hangs on shutdown
