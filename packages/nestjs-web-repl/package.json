@@ -1,0 +1,101 @@
+{
+  "name": "nestjs-web-repl",
+  "version": "2.3.2",
+  "private": true,
+  "description": "Live NestJS REPL over HTTP (SSE + Monaco UI). Compatibility shim: re-exports @remote-repl/nestjs, and @remote-repl/redis under nestjs-web-repl/redis.",
+  "keywords": [
+    "nestjs",
+    "nest",
+    "repl",
+    "web-repl",
+    "node-repl",
+    "remote-repl",
+    "sse",
+    "server-sent-events",
+    "monaco",
+    "debugging",
+    "devtools",
+    "introspection",
+    "dynamic-module",
+    "redis"
+  ],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./redis": {
+      "types": "./dist/redis.d.ts",
+      "default": "./dist/redis.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "redis": [
+        "dist/redis.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/p-dim-popov/nestjs-web-repl.git",
+    "directory": "packages/nestjs-web-repl"
+  },
+  "bugs": {
+    "url": "https://github.com/p-dim-popov/nestjs-web-repl/issues"
+  },
+  "homepage": "https://github.com/p-dim-popov/nestjs-web-repl#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@remote-repl/nestjs": "^2.3.2",
+    "@remote-repl/redis": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^10 || ^11",
+    "@nestjs/core": "^10 || ^11",
+    "ioredis": "^5",
+    "redis": "^4 || ^5",
+    "rxjs": "^7"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    },
+    "redis": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
+    "@nestjs/platform-express": "^11",
+    "@nestjs/testing": "^11",
+    "@swc/core": "^1.15.43",
+    "@types/node": "^20",
+    "@types/supertest": "^6",
+    "reflect-metadata": "^0.2",
+    "rxjs": "^7",
+    "supertest": "^7",
+    "typescript": "^5",
+    "unplugin-swc": "^1.5.9",
+    "vitest": "^2"
+  }
+}

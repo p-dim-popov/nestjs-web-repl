@@ -29,26 +29,25 @@ describe('packaging', () => {
     expect(paths).toContain('skill/SKILL.md');
   });
 
-  it('exposes the default entry and the redis subpath in exports', () => {
-    expect(pkg.exports['.']).toEqual({
-      types: './dist/index.d.ts',
-      default: './dist/index.js',
+  // The `./redis` subpath, its typesVersions fallback and the optional
+  // ioredis/redis peers belong to the `nestjs-web-repl` shim
+  // (packages/nestjs-web-repl): this package exports only its own API.
+  it('exposes only the default entry and package.json in exports', () => {
+    expect(pkg.exports).toEqual({
+      '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+      './package.json': './package.json',
     });
-    expect(pkg.exports['./redis']).toEqual({
-      types: './dist/redis.d.ts',
-      default: './dist/redis.js',
-    });
+    expect(pkg.typesVersions).toBeUndefined();
   });
 
-  it('declares ioredis and redis as optional peer dependencies', () => {
-    expect(pkg.peerDependencies.ioredis).toBeTypeOf('string');
-    expect(pkg.peerDependencies.redis).toBeTypeOf('string');
-    expect(pkg.peerDependenciesMeta.ioredis).toEqual({ optional: true });
-    expect(pkg.peerDependenciesMeta.redis).toEqual({ optional: true });
-  });
-
-  it('provides a typesVersions fallback for the redis subpath', () => {
-    expect(pkg.typesVersions['*'].redis).toEqual(['dist/redis.d.ts']);
+  it('has no runtime dependency on @remote-repl/redis and no redis client peers', () => {
+    expect(Object.keys(pkg.dependencies)).toEqual(['@remote-repl/core']);
+    expect(Object.keys(pkg.peerDependencies).sort()).toEqual([
+      '@nestjs/common',
+      '@nestjs/core',
+      'rxjs',
+    ]);
+    expect(pkg.peerDependenciesMeta).toBeUndefined();
   });
 });
 

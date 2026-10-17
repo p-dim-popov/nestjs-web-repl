@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "dist/tsconfig.build.tsbuildinfo"
+  },
+  "exclude": ["**/*.spec.ts", "node_modules", "dist"],
+  "references": [
+    { "path": "../nestjs/tsconfig.build.json" },
+    { "path": "../redis/tsconfig.build.json" }
+  ]
+}
