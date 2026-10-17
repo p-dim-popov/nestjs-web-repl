@@ -27,9 +27,9 @@ a thin shim over the `@remote-repl` packages. See [Packages](#packages).
 | --------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `@remote-repl/core`   | The engine, the protocol types, the in-memory transport, the browser UI (the per-request UI page plus the Monaco UI bundle) and the shared handler layer. No framework. | A dependency of the framework packages. Install it directly only to write a new one. |
 | `@remote-repl/nestjs` | The NestJS package: `RemoteReplModule.register` / `registerAsync`, the controller, the DI-container context.          | `npm install @remote-repl/nestjs`                   |
-| `@remote-repl/express`| The Express package: `createRemoteReplEngine` + `createRemoteReplRouter`. Mount the router, the mount path is the base path.  | `npm install @remote-repl/express @remote-repl/core` |
+| `@remote-repl/express`| The Express package: `createRemoteReplEngine` + `createRemoteReplRouter`. Mount the router, the mount path is the base path.  | `npm install @remote-repl/express`                   |
 | `@remote-repl/redis`  | The Redis transports (`ioredis` and `node-redis`) for several instances, with an optional topic `prefix`.          | `npm install @remote-repl/redis` plus `ioredis` or `redis` |
-| `nestjs-web-repl`     | The legacy name. A shim that re-exports `@remote-repl/nestjs`, and `@remote-repl/redis` under `nestjs-web-repl/redis`. | `npm install nestjs-web-repl`                       |
+| `nestjs-web-repl`     | The legacy name. A shim: the 2.3.x names as `@deprecated` aliases of `@remote-repl/nestjs`, and of `@remote-repl/redis` under `nestjs-web-repl/redis`. See [Migrating from nestjs-web-repl](#migrating-from-nestjs-web-repl). | `npm install nestjs-web-repl`                       |
 
 All packages require Node 20+. The NestJS package requires NestJS 10 or 11. The
 Express package requires Express 4.16+ or 5. The Redis clients are optional peer
@@ -114,14 +114,13 @@ get(CatService).findAll()
 
 ```ts
 import express from 'express';
-import { RemoteReplInMemoryTransport } from '@remote-repl/core';
 import { createRemoteReplEngine, createRemoteReplRouter } from '@remote-repl/express';
 
 const enabled = process.env.REPL_ENABLED === 'true';
 
 const engine = createRemoteReplEngine({
   options: { enabled },
-  transport: new RemoteReplInMemoryTransport(), // one process; see Redis below
+  // no `transport`: the in-memory default, for one process; see Redis below
   context: { catService },                 // the globals every session sees
 });
 await engine.start(); // no-op when disabled
@@ -309,7 +308,7 @@ tab can then land on one instance, while another instance holds the variables of
 your session. The engine solves this with an **ownership + fan-out** protocol:
 
 - The **first instance** to see a command for a channel claims ownership of that
-  channel. It broadcasts an internal `claim` message on the `webrepl:sys`
+  channel. It broadcasts an internal `claim` message on the `remote-repl:sys`
   transport topic. This is not a client-visible SSE event (see
   [Endpoints](#endpoints)). From then on, only the owner runs commands on that
   channel.
@@ -338,10 +337,11 @@ The protocol is framework-agnostic. A NestJS instance and an Express instance
 can share one transport and one set of channels. The contract suite in
 `packages/nestjs/test/contract/` proves this on a real Redis.
 
-By default, the engine uses `RemoteReplInMemoryTransport`, which only works inside
-one process. That is fine for local development and single-instance
-deployments. For real multi-instance deployments, provide a transport. In NestJS,
-use the `transport` extra. Pass a ready instance, `{ useClass, imports }`, or
+When you give no transport, the engine uses `RemoteReplInMemoryTransport`. The
+`RemoteReplEngine` constructor, `createRemoteReplEngine` and
+`RemoteReplModule.register` all apply this default. It works inside one process
+only: a cluster of instances needs the Redis transport from `@remote-repl/redis`.
+In NestJS, use the `transport` extra. Pass a ready instance, `{ useClass, imports }`, or
 `{ useFactory, inject, imports }`. All three forms are DI-capable, so the
 transport can depend on other providers. In Express, pass it as `transport` to
 `createRemoteReplEngine`. A transport implements:
@@ -350,14 +350,14 @@ transport can depend on other providers. In Express, pass it as `transport` to
 export interface RemoteReplTransport {
   publish(topic: string, message: string): Promise<void>;
   subscribe(topic: string, handler: (message: string) => void): Promise<void>;
-  onModuleDestroy?(): void | Promise<void>;
+  close?(): void | Promise<void>;
 }
 ```
 
 `message` is always a JSON string that the engine has already serialized. Your
 transport only moves opaque strings. It does not parse them. The engine uses
-three fixed topics: `webrepl:cmd`, `webrepl:out`, `webrepl:sys`. The
-`webrepl:sys` topic carries internal `claim`/`release` ownership messages
+three fixed topics: `remote-repl:cmd`, `remote-repl:out`, `remote-repl:sys`. The
+`remote-repl:sys` topic carries internal `claim`/`release` ownership messages
 between instances. The engine never forwards them to SSE clients. Do not confuse
 them with the client-visible `system` *SSE event type* under
 [Endpoints](#endpoints), which only carries `{ping}`, `{done}`, or `{error}`.
@@ -418,7 +418,7 @@ const engine = createRemoteReplEngine({
 **Two apps on one Redis.** The topics have no origin check, so two different
 apps that share one Redis exchange REPL output and ownership. Give each app's
 transport its own topic `prefix`. The transport prepends it verbatim to every
-topic name on the wire (`billing-api:webrepl:out`) and strips it again before
+topic name on the wire (`billing-api:remote-repl:out`) and strips it again before
 the engine sees the message, so the engine stays unaware of prefixes. Replicas
 of one app must use the same prefix: apps with the same prefix behave as
 replicas, apps with different prefixes never see each other. The default is no
@@ -436,7 +436,7 @@ The transport reports it. By default it reports through `console.error`. Pass a
 Nest `Logger`:
 
 ```ts
-new RemoteReplIoRedisTransport(client, { prefix: 'billing-api:', logger: new Logger('WebRepl') });
+new RemoteReplIoRedisTransport(client, { prefix: 'billing-api:', logger: new Logger('RemoteRepl') });
 ```
 
 `ioredis` and `redis` are optional peer dependencies of `@remote-repl/redis`.
@@ -471,7 +471,7 @@ The engine options are the same for every transport. In NestJS, pass them to
 | Option              | Type             | Default                    | Notes                                              |
 | ------------------- | ---------------- | --------------------------- | --------------------------------------------------- |
 | `enabled`           | `boolean`        | *(required)*                | When `false`, the routes return 404 and the engine does not subscribe to the transport. |
-| `instanceId`        | `string`         | random `inst_xxxxxxxx`      | Shown in `command` SSE events and in internal `webrepl:sys` claim/release messages. |
+| `instanceId`        | `string`         | random `inst_xxxxxxxx`      | Shown in `command` SSE events and in internal `remote-repl:sys` claim/release messages. |
 | `sessionTtl`        | `number` (ms)    | `1_800_000` (30 min)        | Idle time before the engine releases the ownership of a channel. |
 | `replayBufferSize`  | `number`         | `200`                       | Events kept per channel for SSE `Last-Event-ID` replay. |
 | `heartbeatInterval` | `number` (ms)    | `15_000`                    | Interval of the SSE `system` `{ ping: true }` event. |
@@ -501,32 +501,74 @@ is available for options that need DI, for example to read a `ConfigService`.
 | Argument       | Type                              | Notes                                                     |
 | -------------- | --------------------------------- | --------------------------------------------------------- |
 | `options`      | `RemoteReplOptions`                  | The engine options above.                                 |
-| `transport`    | `RemoteReplTransport`                  | `RemoteReplInMemoryTransport` or a Redis transport.            |
+| `transport`    | `RemoteReplTransport` (optional)       | A Redis transport for a cluster. Default: `RemoteReplInMemoryTransport`. |
 | `context`      | `object`                          | The globals of every session (shallow copy per session). Exactly one of `context` / `buildContext`. |
 | `buildContext` | `() => object`                    | Called once per session, synchronously; returns the plain object that becomes the session's globals (no Promise). |
 | `logger`       | `{ warn, error }`                 | Default `console`.                                        |
 
 ## Exports
 
-**`@remote-repl/nestjs`** (and the `nestjs-web-repl` shim): `RemoteReplModule`,
-`RemoteReplController`, `RemoteReplService`, `RemoteReplInMemoryTransport`, and
-`REMOTE_REPL_OPTIONS`. `REMOTE_REPL_OPTIONS` is the DI token for the resolved options.
-Use it to inject the options into a controller subclass that you register next
-to the module. The package also exports the types `RemoteReplTransport`,
-`RemoteReplModuleOptions`, `RemoteReplModuleExtras`, `RemoteReplTransportConfig`,
-`RemoteReplEvent`, and `RemoteReplSseEventType`.
+Every export of the `@remote-repl` packages carries the product name: classes
+and types `RemoteRepl*`, constants and DI tokens `REMOTE_REPL_*`, factories
+`createRemoteRepl*` (see `docs/adr/0005-proper-names.md`).
 
-**`@remote-repl/express`**: `createRemoteReplEngine` and `createRemoteReplRouter`.
+**`@remote-repl/nestjs`**: `RemoteReplModule`, `RemoteReplController`,
+`RemoteReplService`, and the DI tokens `REMOTE_REPL_OPTIONS` (the resolved
+options), `REMOTE_REPL_TRANSPORT` and `REMOTE_REPL_CLOCK`. Use
+`REMOTE_REPL_OPTIONS` to inject the options into a controller subclass that
+you register next to the module. The package also re-exports
+`RemoteReplInMemoryTransport` and the types `RemoteReplTransport`,
+`RemoteReplEvent` and `RemoteReplSseEventType` from core, and exports its own
+types `RemoteReplModuleOptions`, `RemoteReplModuleExtras` and
+`RemoteReplTransportConfig`.
 
-**`@remote-repl/redis`** (and `nestjs-web-repl/redis`): `RemoteReplIoRedisTransport`,
-`RemoteReplNodeRedisTransport`, `RemoteReplBaseRedisTransport`, and the type
-`RemoteReplRedisTransportOptions`.
+**`@remote-repl/express`**: `createRemoteReplEngine` and `createRemoteReplRouter`,
+with the types `RemoteReplEngineOptions`, `RemoteReplRouterOptions` and
+`RemoteReplRouterEngine`.
 
-**`@remote-repl/core`**: `RemoteReplEngine`, `createRemoteReplHandlers`,
-`RemoteReplInMemoryTransport`, `RemoteReplDisabledError`, `RemoteReplInvalidCommandError`, the SSE
-helpers, and the protocol types. You need it directly only to write a new
-framework package: wire the five handlers to the routes of your framework and
-map the two errors to 404 and 400.
+**`@remote-repl/redis`**: `RemoteReplIoRedisTransport`,
+`RemoteReplNodeRedisTransport`, `RemoteReplBaseRedisTransport`, and the types
+`RemoteReplRedisTransportOptions`, `RemoteReplRedisLogger`,
+`RemoteReplIoRedisLike` and `RemoteReplNodeRedisLike`.
+
+**`@remote-repl/core`**: `RemoteReplEngine`, `RemoteReplInMemoryTransport`,
+`RemoteReplDisabledError`, `RemoteReplInvalidCommandError`,
+`createRemoteReplHandlers`, `parseRemoteReplLastEventId`,
+`REMOTE_REPL_SSE_RESPONSE_HEADERS`, `REMOTE_REPL_SSE_STREAM_PREAMBLE`,
+`REMOTE_REPL_TOPICS` and `REMOTE_REPL_DEFAULTS`, plus the types
+`RemoteReplOptions`, `RemoteReplTransport`, `RemoteReplSession`,
+`RemoteReplHandlers`, `RemoteReplEvent` and the wire message types. The ring
+buffer, the Node session implementation, the UI renderer and the Monaco asset
+resolver are internal: the handlers reach them. You need core directly only to
+write a new framework package or a new transport.
+
+**`nestjs-web-repl`** (the shim): all of the above from `@remote-repl/nestjs`
+and, under `nestjs-web-repl/redis`, from `@remote-repl/redis`, plus every
+2.3.x name as a `@deprecated` alias. See the next section.
+
+## Migrating from nestjs-web-repl
+
+An app on `nestjs-web-repl` 2.3.x needs no code change to move to 2.4.0. Every
+legacy name still resolves, and `WebReplModule.register({ adapter })` passes
+the `adapter` extra on as `transport`. Your editor shows the replacement of
+each deprecated name on hover.
+
+To move to `@remote-repl/nestjs`, install it (and `@remote-repl/redis` if you
+use a Redis transport) and rename the imports. The full old → new table is in
+[`packages/nestjs-web-repl/README.md`](./packages/nestjs-web-repl/README.md).
+The three renames that matter most:
+
+| 2.3.x                        | 1.0.0                                         |
+| ---------------------------- | --------------------------------------------- |
+| `WebReplModule`              | `RemoteReplModule`                            |
+| `register({ adapter })`      | `register({ transport })`, same values        |
+| `IoRedisWebReplAdapter`      | `RemoteReplIoRedisTransport`                  |
+
+**Wire change.** 2.4.0 and 1.0.0 speak the `remote-repl:*` topics. A 2.3.x
+instance and a 2.4.0 instance on one Redis do not see each other. During a
+rolling upgrade the two groups run as two clusters. When the last 2.3.x
+instance stops, its leases expire and the cluster is whole again
+(`PROTOCOL.md` §8.1).
 
 ## Runtime support
 
@@ -565,7 +607,7 @@ the skill after a package upgrade.
   includes the replay buffer.
 - **Ownership races are last-claim-wins.** If two instances receive the first
   command for a new channel at almost the same time, both can briefly believe that
-  they own it. The internal `claim` message (on the `webrepl:sys` transport topic)
+  they own it. The internal `claim` message (on the `remote-repl:sys` transport topic)
   that the group processes last decides the owner from then on. This window is
   narrow. It only exists for the first command on a channel. The protocol as
   implemented does not fully resolve it.
@@ -599,8 +641,9 @@ The flow has three steps:
    versions and changelogs.
 3. On merge of that PR, the workflow publishes the bumped packages to npm.
 
-`@remote-repl/nestjs` and `nestjs-web-repl` are a fixed group: they always get
-the same version, so the shim never lags the transport. A change to
+Each package has its own version line. The four `@remote-repl` packages start
+at 1.0.0. `nestjs-web-repl` stays on its 2.x line and follows them through
+`^1.0.0` dependency ranges, not through a shared version number. A change to
 `@remote-repl/core` bumps every package that depends on it. Never hand-edit a
 `version` field or create a release tag by hand. Write the PR title as a
 [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`,

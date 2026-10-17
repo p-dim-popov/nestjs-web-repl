@@ -52,11 +52,10 @@ deprecated aliases), bus, broker
 **Framework package**:
 The package that wires the engine to one web framework's HTTP routes, for
 example the NestJS or Express package. It does HTTP wiring only.
-_Avoid_: adapter (the historical name; it now means nothing in this product),
-integration, plugin, binding
+_Avoid_: adapter (the historical name), integration, plugin, binding
 
 **Shared handler layer**:
-The framework-free route logic in the core that every framework adapter calls:
+The framework-free route logic in the core that every framework package calls:
 landing, post, stream, UI and asset. It owns SSE formatting, cursor stamping,
 UI escaping and the asset path guard.
 _Avoid_: controller, handlers (bare), middleware
@@ -116,13 +115,13 @@ _Avoid_: catch-up, history
 
 **UI bundle**:
 The static Monaco editor asset tree (`vs/`) that the core copies from
-`monaco-editor` at build time and every adapter serves, unchanged, from the
+`monaco-editor` at build time and every framework package serves, unchanged, from the
 own origin of the app under `<base>/<channel>/vs/*`. It is the only static
 part of the browser UI; the page itself is the UI page.
 _Avoid_: frontend, web app, Monaco (the editor, not the tree), static UI
 
 **UI page**:
-The small HTML template (`renderReplUi(channel)` in the core) that an adapter
+The small HTML template in the core that a framework package
 renders per request for `<base>/<channel>/ui`. It inlines the channel name
 into an inline script with script-context escaping and loads the editor from
 the UI bundle. It is not a static file: another implementation must port the
@@ -130,9 +129,15 @@ template and its escaping rules (protocol §7).
 _Avoid_: UI bundle (the asset tree), index.html, static page
 
 **Shim**:
-The `nestjs-web-repl` package: the legacy name kept as a pure re-export of the
-NestJS adapter and the Redis transports. It has no logic of its own.
-_Avoid_: alias, legacy package, wrapper
+The `nestjs-web-repl` package: the legacy name that keeps every 2.3.x name as
+a deprecated alias of the NestJS package and the Redis transports. Its only
+logic is the translation of the legacy `adapter` option to `transport`.
+_Avoid_: legacy package, wrapper, compatibility layer
+
+**Legacy alias**:
+A 2.3.x export name that the shim keeps, marked deprecated, as another name
+for its replacement in an `@remote-repl` package.
+_Avoid_: old name, backwards-compat export
 
 **Enabled flag**:
 The runtime switch that, when off, makes every route return 404 and keeps the

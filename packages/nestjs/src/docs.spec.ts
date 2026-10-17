@@ -70,6 +70,14 @@ describe('README.md', () => {
   it('points at the protocol spec', () => {
     expect(readme).toContain('packages/core/PROTOCOL.md');
   });
+
+  it('has a migration section that maps the legacy names to the new ones', () => {
+    expect(readme).toContain('## Migrating from nestjs-web-repl');
+    // The legacy column is spelled only in the README (the vocabulary guard
+    // keeps it out of this package), so the table is checked by its new column.
+    expect(readme).toMatch(/\|\s*`RemoteReplModule`\s*\|/);
+    expect(readme).toMatch(/\|\s*`register\(\{ transport \}\)`, same values\s*\|/);
+  });
 });
 
 describe('GLOSSARY.md', () => {
@@ -89,6 +97,7 @@ describe('GLOSSARY.md', () => {
     'UI bundle',
     'UI page',
     'Shim',
+    'Legacy alias',
   ])('defines the term %s', (term) => {
     expect(glossary).toMatch(new RegExp(`^\\*\\*${term}[^*]*\\*\\*:`, 'm'));
   });
@@ -102,6 +111,7 @@ describe('docs/adr', () => {
     ['the package split', /package/i],
     ['no rxjs in core', /rxjs/i],
     ['no wire protocol version', /wire.*version|protocol.*version/i],
+    ['the RemoteRepl* naming rule and the deprecated aliases in the shim', /RemoteRepl\*[\s\S]*@deprecated/],
   ])('records %s', (_what, pattern) => {
     expect(adrs.some((f) => pattern.test(readFileSync(join(adrDir, f), 'utf8')))).toBe(true);
   });

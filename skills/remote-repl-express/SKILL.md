@@ -17,7 +17,7 @@ Two exports:
 
 | Export                                   | Purpose                                                                 |
 | ---------------------------------------- | ----------------------------------------------------------------------- |
-| `createRemoteReplEngine({ options, transport, context \| buildContext, logger? })` | Builds the `RemoteReplEngine`. The caller owns `start()` / `stop()`.     |
+| `createRemoteReplEngine({ options, context \| buildContext, transport?, logger? })` | Builds the `RemoteReplEngine`. `transport` defaults to in-memory. The caller owns `start()` / `stop()`. |
 | `createRemoteReplRouter({ engine })`           | An Express `Router` with the five routes; mount it wherever you want the base path. It reads `enabled` from the engine. |
 
 ## When to use this skill
@@ -49,15 +49,14 @@ router:
 
 ```ts
 import express from 'express';
-import { RemoteReplInMemoryTransport } from '@remote-repl/core';
 import { createRemoteReplEngine, createRemoteReplRouter } from '@remote-repl/express';
 
 const enabled = process.env.REPL_ENABLED === 'true';
 
 const engine = createRemoteReplEngine({
   options: { enabled },
-  transport: new RemoteReplInMemoryTransport(), // one process; see Redis below
-  context: { db, userService },            // the globals every session sees
+  // no `transport`: the in-memory default, correct for one process; see Redis below
+  context: { db, userService }, // the globals every session sees
 });
 await engine.start(); // no-op when disabled
 

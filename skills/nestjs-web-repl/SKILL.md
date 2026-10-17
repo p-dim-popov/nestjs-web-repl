@@ -11,16 +11,17 @@ description: Use when wiring a live, in-process REPL into a NestJS app over HTTP
 endpoint, a Server-Sent Events output stream, and a Monaco browser UI, backed
 by real `@nestjs/core` REPL sessions running inside the host app.
 
-Two package names resolve to the same API:
+Two package names:
 
 | Install                  | Import from              | Notes                                                          |
 | ------------------------ | ------------------------ | -------------------------------------------------------------- |
-| `@remote-repl/nestjs`    | `@remote-repl/nestjs`    | The implementation. Redis transports are in `@remote-repl/redis`. |
-| `nestjs-web-repl`        | `nestjs-web-repl`        | Compatibility shim: re-exports `@remote-repl/nestjs`; `nestjs-web-repl/redis` re-exports `@remote-repl/redis`. Existing installs keep working unchanged. |
+| `@remote-repl/nestjs`    | `@remote-repl/nestjs`    | The implementation. Redis transports are in `@remote-repl/redis`. Use it for new code and for migrations. |
+| `nestjs-web-repl`        | `nestjs-web-repl`        | The no-change path for an app on 2.3.x: it keeps the legacy names (`WebReplModule`, `register({ adapter })`, `IoRedisWebReplAdapter` from `nestjs-web-repl/redis`) as `@deprecated` aliases of the names below. Do not write new code against the legacy names. |
 
-Use whichever name the project already has. New projects: `@remote-repl/nestjs`
-(plus `@remote-repl/redis` when needed). The examples below use the shim name
-because it is what most existing apps import; swap the names 1:1.
+The examples below use `@remote-repl/nestjs`. For an app that already imports
+`nestjs-web-repl`, leave it as is, or rename the imports with the table in
+`packages/nestjs-web-repl/README.md` (`WebReplModule` → `RemoteReplModule`,
+`adapter` → `transport`, `*WebReplAdapter` → `RemoteRepl*Transport`).
 
 ## When to use this skill
 
@@ -49,7 +50,7 @@ Add the module to your `AppModule`:
 
 ```ts
 import { Module } from '@nestjs/common';
-import { RemoteReplModule } from 'nestjs-web-repl'; // or '@remote-repl/nestjs'
+import { RemoteReplModule } from '@remote-repl/nestjs';
 
 @Module({
   imports: [
@@ -104,7 +105,7 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
   See "Securing it" in the repository README.
 - **Multiple app instances** (load-balanced replicas): the default in-memory
   transport is per-process. For Redis, import a ready-made transport from
-  `nestjs-web-repl/redis` (or `@remote-repl/redis`) — `RemoteReplIoRedisTransport`
+  `@remote-repl/redis` (the shim exposes it as `nestjs-web-repl/redis`) — `RemoteReplIoRedisTransport`
   (ioredis) or `RemoteReplNodeRedisTransport` (node-redis) — and pass it as the
   `transport` extra in the same `register` call:
   `register({ enabled, transport: new RemoteReplIoRedisTransport(client) })`. Hand it
@@ -118,7 +119,8 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
   each other. Default: no prefix.
 - **Other brokers:** supply a custom transport (a ready instance,
   `{ useClass, imports }`, or `{ useFactory, inject, imports }`) implementing
-  `RemoteReplTransport`. See "Adapter / multi-instance" in the README.
+  `RemoteReplTransport` (`publish`, `subscribe`, optional `close`). See
+  "Transport / multi-instance" in the README.
 - **Options** (base path, TTLs, heartbeats) and **exported symbols:** see
   "Options" and "Exports" in the README.
 - **Runnable example gotcha:** run examples with `ts-node`, not `tsx` —
@@ -132,7 +134,7 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
 - Running two different apps on one Redis without a `prefix` — they will share
   channels and ownership.
 - Mixing `nestjs-web-repl` and `@remote-repl/nestjs` imports in one app — pick
-  one name; the shim re-exports the same objects, but two installs can resolve
+  one name; the shim aliases the same objects, but two installs can resolve
   to two copies.
 - Running a README example with `tsx` and hitting missing-provider/DI errors —
   use `ts-node` instead.

@@ -1,5 +1,4 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
-import { RemoteReplInMemoryTransport } from '@remote-repl/core';
 import { createRemoteReplEngine, createRemoteReplRouter } from '../src';
 import { CatService } from './cat.service';
 
@@ -26,7 +25,7 @@ async function bootstrap(): Promise<void> {
   const catService = new CatService();
   const engine = createRemoteReplEngine({
     options: { enabled, instanceId: process.env.INSTANCE_ID },
-    transport: new RemoteReplInMemoryTransport(),
+    // No `transport`: the in-memory default, correct for this one process.
     // What every REPL session sees as globals.
     context: { catService },
   });

@@ -13,10 +13,15 @@ framework-free engine (`@remote-repl/core`) speaks one wire protocol
 (`packages/core/PROTOCOL.md`); framework packages (`@remote-repl/nestjs`,
 `@remote-repl/express`) do the HTTP wiring; transports (`@remote-repl/redis`)
 carry the protocol between instances; the legacy `nestjs-web-repl` name is a
-re-export shim. The shared vocabulary (engine, channel, transport, framework
-transport, lease, claim/release, topic prefix, shim, …) is defined in
-`GLOSSARY.md`; the hard-to-reverse decisions behind the split are in
-`docs/adr/`. Use the glossary's terms in code, tests and issues.
+shim that keeps the 2.3.x names as deprecated aliases. The shared vocabulary
+(engine, channel, transport, framework package, lease, claim/release, topic
+prefix, shim, …) is defined in `GLOSSARY.md`; the hard-to-reverse decisions
+behind the split are in `docs/adr/`. Use the glossary's terms in code, tests
+and issues. Every export of an `@remote-repl/*` package is qualified
+(`RemoteRepl*`, `REMOTE_REPL_*`, `createRemoteRepl*`) and the words "web
+repl" and "adapter" do not appear in those four packages in any spelling
+(ADR 0005; guarded by the vocabulary spec in
+`packages/nestjs/src/packaging.spec.ts`).
 **The endpoints execute arbitrary code by design.** Treat every change through
 that lens — see "Security invariants" below.
 
@@ -259,8 +264,9 @@ change or that spec goes red. Packages live under `packages/`:
   `../src`; `examples/stackblitz/` targets the published package). Depends
   on `@remote-repl/core` and re-exports what its public API needs
   (`RemoteReplInMemoryTransport`, `RemoteReplTransport`, `RemoteReplEvent`,
-  `RemoteReplSseEventType`), so `import { RemoteReplModule } from 'nestjs-web-repl'`
-  keeps working through the shim. It exports ONLY its own API: no `./redis`
+  `RemoteReplSseEventType`), so the shim can alias them without depending on
+  core. Exports the DI tokens `REMOTE_REPL_OPTIONS`, `REMOTE_REPL_TRANSPORT`,
+  `REMOTE_REPL_CLOCK`. It exports ONLY its own API: no `./redis`
   subpath, no `typesVersions`, no redis-client peers (`src/packaging.spec.ts`
   pins that, together with `files: ["dist"]`, the absence of a `bin` in every
   workspace package, the workspace layout and the `skills/` frontmatter); `@remote-repl/redis` is a devDependency for `test/contract/`
@@ -312,22 +318,26 @@ change or that spec goes red. Packages live under `packages/`:
     the raw `sys` topic, lease takeover when the owning framework dies, and
     `Last-Event-ID` replay against the other framework.
 - `packages/nestjs-web-repl/` — the `nestjs-web-repl` package: the legacy
-  name kept alive as a thin re-export shim so existing installs resolve with
-  zero code changes. Deliberately NOT under the `@remote-repl` scope.
-  `src/index.ts` = `export * from '@remote-repl/nestjs'`; `src/redis.ts`
-  (the `./redis` subpath, with a `typesVersions` fallback) =
-  `export * from '@remote-repl/redis'`. No logic of its own, ever. Depends on
-  `@remote-repl/nestjs` and `@remote-repl/redis` with caret ranges and its
-  `version` is kept in LOCKSTEP with `@remote-repl/nestjs` (pinned by
+  name kept alive as a shim so 2.3.x installs resolve with zero code changes.
+  Deliberately NOT under the `@remote-repl` scope. `src/index.ts` re-exports
+  `@remote-repl/nestjs` AND every 2.3.x name as a JSDoc `@deprecated` alias
+  (`WebReplController = RemoteReplController`, …); `WebReplModule` is the one
+  alias with logic: `register`/`registerAsync` rename the `adapter` extra to
+  `transport` (the DI form is the value, so the key rename is the whole
+  translation) and delegate to `RemoteReplModule`. `src/redis.ts` (the
+  `./redis` subpath, with a `typesVersions` fallback) does the same over
+  `@remote-repl/redis`. No runtime deprecation warning. Depends on
+  `@remote-repl/nestjs` and `@remote-repl/redis` with `^1.0.0` ranges; its
+  `version` is its OWN 2.x line, not lockstep (pinned by
   `src/packaging.spec.ts`, together with the exports map, the NestJS/rxjs
   peers, the optional `ioredis`/`redis` peers, `files: ["dist"]`, the absence
-  of a `bin` and the tarball contents). Ships its own `README.md` and
-  `LICENSE` because root files are not packed. `src/shim.spec.ts` pins export
-  keys and object identity against the `@remote-repl/*` barrels;
-  `test/shim-app.e2e.spec.ts` boots a Nest app that imports
-  `nestjs-web-repl` (via the vitest alias to `src/`) and checks runtime
-  `enabled` through the shim. No `bin` (see `CHANGELOG.md`; skills install
-  via skills.sh, see `skills/` below).
+  of a `bin` and the tarball contents). Ships its own `README.md` (with the
+  old → new migration table) and `LICENSE` because root files are not packed.
+  `src/shim.spec.ts` pins alias identity and emits the shim's declarations to
+  check that every legacy name carries `@deprecated` in the `.d.ts`;
+  `test/shim-app.e2e.spec.ts` boots a legacy consumer app with the `adapter`
+  extra in every DI form plus `registerAsync`. No `bin` (see `CHANGELOG.md`;
+  skills install via skills.sh, see `skills/` below).
 - `skills/` — the consumer-facing Claude Code skills (distinct from this
   AGENTS.md, which is for contributors), one directory per framework package,
   each a single `SKILL.md` with `name` + `description` frontmatter:
@@ -365,12 +375,15 @@ change or that spec goes red. Packages live under `packages/`:
   (`patch` / `minor` / `major`) with a short release note. Conventional
   Commit subjects are still the house style, for readable history. On merge
   to `main`, pending changesets become a "Version Packages" PR; merging that
-  PR publishes to npm. `@remote-repl/nestjs` and `nestjs-web-repl` are a
-  `fixed` group (always the same version; a changeset for one bumps both),
-  and `updateInternalDependencies: patch` rewrites the internal
-  `^<version>` ranges (the shim's lockstep pin is asserted by
-  `packages/nestjs-web-repl/src/packaging.spec.ts`). See "Contributing" in
-  `README.md`.
+  PR publishes to npm. Versions are decoupled (ADR 0005): no `fixed` or
+  `linked` group. The four `@remote-repl` packages started at 1.0.0 (set by
+  hand once, before the first publish — the one allowed hand edit) and
+  `nestjs-web-repl` stays on its own 2.x line with `^1.0.0` ranges on them
+  (asserted by `packages/nestjs-web-repl/src/packaging.spec.ts`).
+  `updateInternalDependencies: patch` rewrites the internal ranges when a
+  dependency bumps. A never-published package needs no changeset:
+  `changeset publish` ships every workspace package whose version is absent
+  from the registry. See "Contributing" in `README.md`.
 
 ## Security invariants (do not regress these)
 

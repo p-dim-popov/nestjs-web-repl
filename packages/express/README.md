@@ -12,7 +12,7 @@ output stream and a Monaco browser UI, backed by the framework-free engine in
 ## Install
 
 ```bash
-npm install @remote-repl/express @remote-repl/core
+npm install @remote-repl/express
 ```
 
 `express` (`^4.16 || ^5`) is a peer dependency. Node 20+ is required.
@@ -21,14 +21,13 @@ npm install @remote-repl/express @remote-repl/core
 
 ```ts
 import express from 'express';
-import { RemoteReplInMemoryTransport } from '@remote-repl/core';
 import { createRemoteReplEngine, createRemoteReplRouter } from '@remote-repl/express';
 
 const enabled = process.env.REPL_ENABLED === 'true';
 
 const engine = createRemoteReplEngine({
   options: { enabled },
-  transport: new RemoteReplInMemoryTransport(),
+  // no `transport`: the in-memory default, for one process
   context: { db }, // what every REPL session sees as globals
 });
 await engine.start(); // no-op when disabled
@@ -40,8 +39,8 @@ app.listen(3000);
 
 The mount path is the base path. `enabled` is set once, on the engine: the
 engine refuses commands and streams, and the router reads `engine.enabled` and
-returns 404 on every route. For several replicas, pass a transport from
-`@remote-repl/redis` instead of the in-memory one.
+returns 404 on every route. One process needs no transport. For several
+replicas, pass a transport from `@remote-repl/redis`.
 
 Full documentation, the options table and the security notes are in the
 repository README: https://github.com/p-dim-popov/remote-repl#readme

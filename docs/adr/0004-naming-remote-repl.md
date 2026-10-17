@@ -75,5 +75,8 @@ document, whether it lives in this repository or in its own.
   changesets config, the schema `$id`); a spec in `packages/nestjs/src/packaging.spec.ts`
   guards against the old slugs. The GitHub rename is a manual step; GitHub
   redirects the old slug afterwards.
-- The legacy name `nestjs-web-repl` stays on npm as a re-export shim in
-  lockstep with `@remote-repl/nestjs`.
+- The legacy name `nestjs-web-repl` stays on npm as a shim. It keeps the
+  2.3.x names as deprecated aliases and has its own version line (2.x) with
+  `^1.0.0` ranges on the `@remote-repl` packages. An earlier version of this
+  ADR said "in lockstep with `@remote-repl/nestjs`"; ADR 0005 decided
+  otherwise, before the first publish.
