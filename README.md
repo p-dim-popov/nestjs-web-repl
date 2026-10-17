@@ -367,20 +367,24 @@ next to the module. The package also exports the types `WebReplAdapter`,
 `WebReplModuleOptions`, `WebReplModuleExtras`, `WebReplAdapterConfig`,
 `WebReplEvent`, and `SseEventType`.
 
-## AI skill
+## AI skills
 
-This package ships a [Claude Code](https://claude.com/claude-code) skill that
-teaches coding agents how to install and use the REPL safely. After you install the
-package, run:
+The repository ships [Claude Code](https://claude.com/claude-code) skills that
+teach coding agents how to install and use the REPL safely, one per framework.
+They live as plain files under `skills/` and install through the
+[skills.sh](https://skills.sh) ecosystem:
 
 ```bash
-npx nestjs-web-repl install-skill
+# NestJS (@remote-repl/nestjs or the nestjs-web-repl shim)
+npx skills add p-dim-popov/node-remote-repl/skills/nestjs-web-repl
+
+# Express (@remote-repl/express)
+npx skills add p-dim-popov/node-remote-repl/skills/remote-repl-express
 ```
 
-This writes `.claude/skills/nestjs-web-repl/SKILL.md` into your project. Your agent
-picks it up in its next session. The command never overwrites a modified skill file
-without a flag. If you have edited the file, run the command again with `--force`
-to refresh it after a package upgrade.
+Each command writes the skill's `SKILL.md` into your agent's skills directory.
+Your agent picks it up in its next session. Run the command again to refresh
+the skill after a package upgrade.
 
 ## Limitations
 

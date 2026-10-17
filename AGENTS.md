@@ -197,8 +197,9 @@ live under `packages/`:
   (`InMemoryWebReplAdapter`, `WebReplAdapter`, `WebReplEvent`,
   `SseEventType`), so `import { WebReplModule } from 'nestjs-web-repl'`
   keeps working through the shim. It exports ONLY its own API: no `./redis`
-  subpath, no `typesVersions`, no redis-client peers (`src/cli/packaging.spec.ts`
-  pins that); `@remote-repl/redis` is a devDependency for `test/contract/`
+  subpath, no `typesVersions`, no redis-client peers (`src/packaging.spec.ts`
+  pins that, together with `files: ["dist"]`, the absence of a `bin` in every
+  workspace package, the workspace layout and the `skills/` frontmatter); `@remote-repl/redis` is a devDependency for `test/contract/`
   only. rxjs is a peer of THIS package (the Observable adaptation lives
   here), never of
   core. Paths below are relative to it.
@@ -231,13 +232,6 @@ live under `packages/`:
   - `src/interfaces/web-repl-options.interface.ts` — `WebReplModuleOptions`
     (extends core's `WebReplOptions`), `WebReplAdapterConfig`,
     `WebReplModuleExtras`. `src/constants.ts` — the Nest DI tokens only.
-  - `src/cli/` — the `install-skill` CLI (`index.ts` dispatcher +
-    `install-skill.ts` copy logic) exposed as the `nestjs-web-repl` bin.
-    `src/cli/packaging.spec.ts` also pins the workspace layout (private root,
-    package at `packages/nestjs`).
-  - `skill/SKILL.md` — the consumer-facing Claude Code skill shipped to package
-    users (distinct from this AGENTS.md, which is for contributors). Installed
-    via `npx nestjs-web-repl install-skill`.
   - `example/` — a runnable host app. `test/` — the two-instance e2e (in-memory
     adapter) and `test/contract/` — the contract suite: two real Nest
     instances on a REAL Redis (`REDIS_URL`, default `redis://127.0.0.1:6379`),
@@ -261,8 +255,21 @@ live under `packages/`:
   keys and object identity against the `@remote-repl/*` barrels;
   `test/shim-app.e2e.spec.ts` boots a Nest app that imports
   `nestjs-web-repl` (via the vitest alias to `src/`) and checks runtime
-  `enabled` through the shim. The old `npx nestjs-web-repl install-skill` bin
-  is NOT exposed here (see `CHANGELOG.md`).
+  `enabled` through the shim. No `bin` (see `CHANGELOG.md`; skills install
+  via skills.sh, see `skills/` below).
+- `skills/` — the consumer-facing Claude Code skills (distinct from this
+  AGENTS.md, which is for contributors), one directory per framework adapter,
+  each a single `SKILL.md` with `name` + `description` frontmatter:
+  `skills/nestjs-web-repl/` (`@remote-repl/nestjs` and the shim; frontmatter
+  `name: nestjs-web-repl` is the identity skills.sh keys on, keep it) and
+  `skills/remote-repl-express/` (`@remote-repl/express`). Consumers install
+  them with `npx skills add p-dim-popov/node-remote-repl/skills/<dir>`
+  (skills.sh indexes `SKILL.md` files straight from the GitHub repo; nothing
+  is packed into npm tarballs, and there is no install CLI). Both must lead
+  with the "Security first" section before "Wire it up"; when a package's
+  public API or package name changes, update the matching skill in the same
+  change. `packages/nestjs/src/packaging.spec.ts` pins their existence,
+  frontmatter and key content.
 
 ## Conventions
 

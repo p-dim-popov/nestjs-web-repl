@@ -29,12 +29,8 @@
     },
     "./package.json": "./package.json"
   },
-  "bin": {
-    "nestjs-web-repl": "dist/cli/index.js"
-  },
   "files": [
-    "dist",
-    "skill"
+    "dist"
   ],
   "repository": {
     "type": "git",
