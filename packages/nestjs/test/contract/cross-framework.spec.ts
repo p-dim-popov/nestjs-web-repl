@@ -9,13 +9,16 @@ import {
   frameworks,
   isDoneFor,
   isOutputContaining,
+  isPing,
+  observeRedis,
   type Framework,
   type Instance,
   openSse,
+  sleep,
   uniqueChannel,
 } from './harness';
 import { transports, type Transport } from './transports';
-import type { WebReplOptions } from '@remote-repl/core';
+import { TOPICS, type SysMessage, type WebReplOptions } from '@remote-repl/core';
 
 interface Pair {
   /** Receives the first command, so it claims the channel. */
@@ -91,6 +94,128 @@ describe.each(transports)('NestJS <-> Express over $name', (transport: Transport
         }
         sseOwner.close();
         ssePeer.close();
+      }, 20_000);
+    });
+
+    describe('ownership on the wire', () => {
+      // Fast owner heartbeat so a renewal is observable within the test.
+      const lease = { ownerHeartbeatInterval: 200, ownerLeaseTtl: 400 };
+
+      it('the owner claims the channel and keeps heartbeating it on the sys topic; the relaying framework never claims', async () => {
+        const observer = await observeRedis();
+        const wire = await observer.watch([TOPICS.sys]);
+        const pair = await bootPair(transport, ordering, lease);
+        try {
+          const { owner, peer } = pair;
+          const channel = uniqueChannel('sys');
+          const ssePeer = await openSse(peer.port, channel);
+          const first = await owner.post(channel, "'claimed'");
+          await ssePeer.waitFor(isDoneFor(first.commandId));
+          const second = await peer.post(channel, "'relayed'");
+          await ssePeer.waitFor(isDoneFor(second.commandId));
+          // Long enough for at least one lease renewal from the owner.
+          await sleep(lease.ownerHeartbeatInterval * 3);
+          ssePeer.close();
+
+          const sys = wire
+            .filter((m) => m.startsWith(`${TOPICS.sys} `))
+            .map((m) => JSON.parse(m.slice(TOPICS.sys.length + 1)) as SysMessage)
+            .filter((m) => m.channel === channel);
+          const claims = sys.filter((m) => m.kind === 'claim');
+          expect(claims.length).toBeGreaterThanOrEqual(2); // initial claim + >= 1 heartbeat
+          expect(claims.every((m) => m.instanceId === 'OWNER')).toBe(true);
+          expect(sys.some((m) => m.instanceId === 'PEER')).toBe(false);
+          expect(sys.some((m) => m.kind === 'release')).toBe(false);
+        } finally {
+          await pair.closeAll();
+          await observer.close();
+        }
+      }, 20_000);
+    });
+
+    describe('lease takeover across frameworks', () => {
+      const lease = { ownerHeartbeatInterval: 200, ownerLeaseTtl: 400 };
+
+      it('after the owning framework dies and its lease expires, the other framework takes over with a fresh session', async () => {
+        const pair = await bootPair(transport, ordering, lease);
+        try {
+          const { owner, peer } = pair;
+          const channel = uniqueChannel('xdead');
+          const ssePeer = await openSse(peer.port, channel);
+          const first = await owner.post(channel, 'const gone = 1');
+          await ssePeer.waitFor(isDoneFor(first.commandId));
+
+          // A crash as far as the peer can tell: no release is published.
+          await owner.close();
+          await sleep(lease.ownerLeaseTtl + 200);
+
+          const second = await peer.post(channel, 'typeof gone');
+          expect(second.status).toBe(202);
+          const out = await ssePeer.waitFor(isOutputContaining('undefined'));
+          expect(out.event.commandId).toBe(second.commandId);
+          const start = ssePeer.frames.find(
+            (f) => f.event.type === 'command' && f.event.commandId === second.commandId,
+          )!;
+          expect(executorOf(start)).toBe('PEER');
+          await ssePeer.waitFor(isDoneFor(second.commandId));
+          ssePeer.close();
+        } finally {
+          await pair.closeAll();
+        }
+      }, 20_000);
+    });
+
+    describe('SSE replay across frameworks', () => {
+      let pair: Pair;
+      beforeAll(async () => {
+        pair = await bootPair(transport, ordering, { heartbeatInterval: 150 });
+      });
+      afterAll(() => pair.closeAll());
+
+      it('a client that watched the owner can reconnect to the other framework with Last-Event-ID and get only what it missed', async () => {
+        const { owner, peer } = pair;
+        const channel = uniqueChannel('xreplay');
+        const live = await openSse(owner.port, channel);
+        const c1 = await owner.post(channel, "'one'");
+        await live.waitFor(isDoneFor(c1.commandId));
+        const c2 = await peer.post(channel, "'two'");
+        await live.waitFor(isDoneFor(c2.commandId));
+        const all = live.frames.filter((f) => !isPing(f));
+        live.close();
+        expect(all.map((f) => f.event.type)).toEqual([
+          'command', 'output', 'system', 'command', 'output', 'system',
+        ]);
+        expect(all.map((f) => Number(f.wireId))).toEqual(all.map((f) => f.event.id));
+
+        // Reconnect on the OTHER framework from the cursor of the first command's `done`.
+        const cursor = all[2].event.id;
+        const resumed = await openSse(peer.port, channel, cursor);
+        const got = await resumed.settle(300);
+        resumed.close();
+        expect(got.filter((f) => !isPing(f)).map((f) => f.event)).toEqual(
+          all.slice(3).map((f) => f.event),
+        );
+      }, 20_000);
+
+      it('a client that watched the relaying framework can reconnect to the owner and get only what it missed', async () => {
+        const { owner, peer } = pair;
+        const channel = uniqueChannel('xreplay-rev');
+        const live = await openSse(peer.port, channel);
+        const c1 = await owner.post(channel, "'one'");
+        await live.waitFor(isDoneFor(c1.commandId));
+        const c2 = await owner.post(channel, "'two'");
+        await live.waitFor(isDoneFor(c2.commandId));
+        const all = live.frames.filter((f) => !isPing(f));
+        live.close();
+        expect(all).toHaveLength(6);
+
+        const cursor = all[2].event.id;
+        const resumed = await openSse(owner.port, channel, cursor);
+        const got = await resumed.settle(300);
+        resumed.close();
+        expect(got.filter((f) => !isPing(f)).map((f) => f.event)).toEqual(
+          all.slice(3).map((f) => f.event),
+        );
       }, 20_000);
     });
   });
