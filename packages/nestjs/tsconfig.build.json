@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "composite": true,
     "rootDir": "src",
     "tsBuildInfoFile": "dist/tsconfig.build.tsbuildinfo"
   },
@@ -14,9 +15,6 @@
   "references": [
     {
       "path": "../core/tsconfig.build.json"
-    },
-    {
-      "path": "../redis/tsconfig.build.json"
     }
   ]
 }

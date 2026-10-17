@@ -1,12 +1,16 @@
 {
   "extends": "./tsconfig.build.json",
   "compilerOptions": {
+    "composite": false,
     "noEmit": true,
     "rootDir": "..",
     "paths": {
-      "@remote-repl/core": ["../core/src/index.ts"],
-      "@remote-repl/redis": ["../redis/src/index.ts"],
-      "@remote-repl/express": ["../express/src/index.ts"]
+      "@remote-repl/core": [
+        "../core/src/index.ts"
+      ],
+      "@remote-repl/express": [
+        "../express/src/index.ts"
+      ]
     }
   },
   "references": []
