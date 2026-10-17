@@ -640,6 +640,18 @@ what you submit. Agents that work in this repo should start with
 [`AGENTS.md`](./AGENTS.md), [`GLOSSARY.md`](./GLOSSARY.md) and
 [`docs/adr/`](./docs/adr).
 
+PRs merge as a single squash commit. Write the PR title as a
+[Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
+`docs:`, and so on) for readable history. Version bumps are driven by
+[changesets](https://github.com/changesets/changesets), not by commit messages:
+a PR that changes what a package does must include a changeset file
+(`npx changeset`) that names the packages it touches, the bump
+(`patch` / `minor` / `major`) and a short release note. On merge to `main`, the
+release workflow collects pending changesets into a "Version Packages" PR;
+merging that PR publishes the bumped packages to npm and writes their
+`CHANGELOG.md` files. `nestjs-web-repl` always carries the same version as
+`@remote-repl/nestjs`.
+
 ## License
 
 [MIT](./LICENSE) © Petar Popov

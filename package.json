@@ -15,11 +15,13 @@
     "typecheck": "npm run typecheck --workspaces",
     "example": "npm run example --workspace @remote-repl/nestjs",
     "example:express": "npm run example --workspace @remote-repl/express",
-    "schema:check": "npm run schema:check --workspace @remote-repl/core"
+    "schema:check": "npm run schema:check --workspace @remote-repl/core",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "npm run build && changeset publish"
   },
   "devDependencies": {
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/git": "^10.0.1",
-    "semantic-release": "^25.0.8"
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3"
   }
 }

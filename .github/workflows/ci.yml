@@ -173,28 +173,3 @@ jobs:
               echo "All green on this runtime. Promote it by removing \`continue-on-error\` from the job."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-  release-config:
-    name: validate release config
-    # DISABLED with release.yml during the @remote-repl monorepo split (#19,
-    # ticket #21): the root .releaserc.json targets the pre-split single
-    # package. Both come back with the per-package release design in #33.
-    if: false
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm ci
-      - name: Load & validate semantic-release config
-        # Loads .releaserc.json and requires every plugin during setup, then
-        # no-ops because the PR branch is not `main`. A malformed config or a
-        # missing plugin fails here; a clean exit proves the pipeline is valid.
-        # No tokens: verifyConditions (which needs auth) only runs for the
-        # release branch, which this is not.
-        run: npx semantic-release --dry-run --no-ci
