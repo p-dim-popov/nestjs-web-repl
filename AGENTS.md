@@ -239,7 +239,14 @@ live under `packages/`:
     the observable multi-instance behavior (ownership, lease takeover, SSE
     replay, serialization, `enabled`, and cross-app isolation: no prefix
     leaks, same prefix shares, different prefixes isolate) and must stay
-    green through any refactor.
+    green through any refactor. `test/contract/cross-framework.spec.ts` reuses
+    the same harness (`frameworks`: `bootInstance` for Nest,
+    `bootExpressInstance` for a plain Express app via `@remote-repl/express`,
+    aliased to its source in `vitest.config.ts` like core) to run one NestJS
+    and one Express instance on the shared Redis, per transport and per owner
+    framework: single execution + cross-framework relay, claim/heartbeat on
+    the raw `sys` topic, lease takeover when the owning framework dies, and
+    `Last-Event-ID` replay against the other framework.
 - `packages/nestjs-web-repl/` — the `nestjs-web-repl` package: the legacy
   name kept alive as a thin re-export shim so existing installs resolve with
   zero code changes. Deliberately NOT under the `@remote-repl` scope.

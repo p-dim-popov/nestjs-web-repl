@@ -1,18 +1,20 @@
-import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import express from 'express';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
+import { createReplEngine, createReplRouter } from '@remote-repl/express';
+import type { WebReplAdapter, WebReplEvent, WebReplOptions } from '@remote-repl/core';
 import { WebReplModule } from '../../src/web-repl.module';
-import type { WebReplAdapter } from '@remote-repl/core';
 import type { WebReplModuleOptions } from '../../src/interfaces/web-repl-options.interface';
-import type { WebReplEvent } from '@remote-repl/core';
 
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 
-/** A booted, listening instance plus the HTTP handle tests drive it through. */
+/**
+ * A booted, listening instance plus the HTTP handle tests drive it through.
+ * The same shape whichever framework hosts it: tests never see the app.
+ */
 export interface Instance {
-  app: INestApplication;
   port: number;
   post(channel: string, command: string): Promise<{ status: number; commandId?: string }>;
   get(path: string): Promise<{ status: number }>;
@@ -30,22 +32,69 @@ export const bootInstance = async (
   await app.init();
   await app.listen(0);
   const { port } = app.getHttpServer().address() as AddressInfo;
+  return { port, ...httpHandle(app.getHttpServer()), close: () => app.close() };
+};
+
+/**
+ * Same HTTP surface, hosted by a plain Express app: `createReplEngine` +
+ * `createReplRouter` mounted at `/repl`, with a static context standing in
+ * for the DI container.
+ */
+export const bootExpressInstance = async (
+  adapter: WebReplAdapter,
+  options: Partial<WebReplOptions> & { instanceId: string },
+): Promise<Instance> => {
+  const enabled = options.enabled ?? true;
+  const engine = createReplEngine({
+    options: { ...options, enabled },
+    transport: adapter,
+    context: {},
+    logger: { warn() {}, error() {} },
+  });
+  await engine.start();
+  const app = express();
+  app.use('/repl', createReplRouter({ engine, enabled }));
+  const server = app.listen(0);
+  await new Promise<void>((r) => server.once('listening', () => r()));
+  const { port } = server.address() as AddressInfo;
   return {
-    app,
     port,
-    async post(channel, command) {
-      const res = await request(app.getHttpServer())
-        .post(`/repl/${encodeURIComponent(channel)}`)
-        .send({ command });
-      return { status: res.status, commandId: res.body?.commandId };
+    ...httpHandle(server),
+    close: async () => {
+      await new Promise<void>((resolve, reject) =>
+        server.close((err) => (err ? reject(err) : resolve())),
+      );
+      await engine.stop();
     },
-    async get(path) {
-      const res = await request(app.getHttpServer()).get(path);
-      return { status: res.status };
-    },
-    close: () => app.close(),
   };
 };
+
+const httpHandle = (server: http.Server): Pick<Instance, 'post' | 'get'> => ({
+  async post(channel, command) {
+    const res = await request(server)
+      .post(`/repl/${encodeURIComponent(channel)}`)
+      .send({ command });
+    return { status: res.status, commandId: res.body?.commandId };
+  },
+  async get(path) {
+    const res = await request(server).get(path);
+    return { status: res.status };
+  },
+});
+
+/** A framework hosting the REPL; both expose the identical surface under `/repl`. */
+export interface Framework {
+  name: 'nestjs' | 'express';
+  boot(
+    adapter: WebReplAdapter,
+    options: Partial<WebReplOptions> & { instanceId: string },
+  ): Promise<Instance>;
+}
+
+export const frameworks: Framework[] = [
+  { name: 'nestjs', boot: bootInstance },
+  { name: 'express', boot: bootExpressInstance },
+];
 
 /** One SSE frame as it arrived on the wire: the `id:` line plus the parsed `data:` JSON. */
 export interface Frame {
