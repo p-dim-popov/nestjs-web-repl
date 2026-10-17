@@ -34,10 +34,13 @@ describe('nestjs-web-repl packaging', () => {
     expect(redisPkg.version).toMatch(/^1\./);
   });
 
-  it('depends on @remote-repl/nestjs and @remote-repl/redis with ^1.0.0 ranges, nothing else', () => {
+  // Changesets (`updateInternalDependencies: patch`) rewrites these ranges to
+  // the dependency's current version on every release, so the expectation is
+  // derived from the workspace manifests, never a literal.
+  it('depends on @remote-repl/nestjs and @remote-repl/redis with caret ranges on their current versions, nothing else', () => {
     expect(pkg.dependencies).toEqual({
-      '@remote-repl/nestjs': '^1.0.0',
-      '@remote-repl/redis': '^1.0.0',
+      '@remote-repl/nestjs': `^${nestjsPkg.version}`,
+      '@remote-repl/redis': `^${redisPkg.version}`,
     });
   });
 
@@ -118,13 +121,14 @@ describe('release wiring (changesets)', () => {
     expect(config().linked ?? []).toEqual([]);
   });
 
-  it('the four @remote-repl packages are at 1.x and depend on each other with ^1.0.0', () => {
+  it('the four @remote-repl packages are at 1.x and depend on each other with caret ranges on the current versions', () => {
     const scoped = manifests.filter((m) => m.name.startsWith('@remote-repl/'));
     expect(scoped).toHaveLength(4);
+    const versionOf = (name: string) => manifests.find((m) => m.name === name)!.version;
     for (const m of scoped) {
       expect(m.version, m.name).toMatch(/^1\./);
       for (const [dep, range] of Object.entries({ ...m.dependencies, ...m.devDependencies })) {
-        if (dep.startsWith('@remote-repl/')) expect(range, `${m.name} -> ${dep}`).toBe('^1.0.0');
+        if (dep.startsWith('@remote-repl/')) expect(range, `${m.name} -> ${dep}`).toBe(`^${versionOf(dep)}`);
       }
     }
   });
