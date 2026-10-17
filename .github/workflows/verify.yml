@@ -1,0 +1,87 @@
+name: Verify
+
+# The verification module (ADR 0006). This is the ONLY place the recipe
+# exists: pr.yml calls it on every pull request, release.yml calls it on every
+# push to main and publishes only behind it. Two jobs, two questions:
+#  - dev:     the contributor's laptop in CI (Node from mise.toml, no Redis).
+#             "Does `npm test` pass without Docker?" The contract suite skips
+#             itself there (packages/nestjs/test/contract/redis-preflight.ts).
+#  - runtime: every supported runtime, with Redis, the full suite.
+#             "Does the product work on this runtime?" All legs block.
+# The fast specs run in both; that overlap is deliberate (the ADR says why).
+
+on:
+  workflow_call:
+
+jobs:
+  dev:
+    name: dev (mise node, no Redis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Protocol schema drift check
+        # Regenerates packages/core/schema/protocol.schema.json from the
+        # TypeScript protocol types and fails if the committed file differs.
+        run: npm run schema:check
+
+      - name: Build
+        run: npm run build
+
+      - name: Test (the contract suite skips itself, no Redis here)
+        run: npm test
+
+  runtime:
+    name: runtime (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Node legs pick their version per command with `mise x` (even the
+          # one matching mise.toml, so the leg name stays true when the dev
+          # Node moves on); Bun and Deno come from mise.toml. `npm ci` ran once on the dev Node: the
+          # native binaries are per platform, not per Node version.
+          - runtime: node-22
+            vitest: mise x node@22 -- npx vitest run
+          - runtime: node-24
+            vitest: mise x node@24 -- npx vitest run
+          - runtime: node-26
+            vitest: mise x node@26 -- npx vitest run
+          # `--bun` is REQUIRED: without it bunx honours vitest's node shebang
+          # and the whole leg silently runs on Node.
+          - runtime: bun
+            vitest: bun --bun x vitest run
+          # The default forks pool exits 1 with "Uncaught BrokenPipe" on Deno
+          # after a fully green run; the threads pool exits cleanly.
+          - runtime: deno
+            vitest: deno run -A npm:vitest run --pool=threads
+    # Real Redis for the contract suite (packages/nestjs/test/contract): two
+    # app instances over the shipped ioredis and node-redis transports.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://127.0.0.1:6379
+      # The contract suite must RUN here, never skip.
+      REDIS_REQUIRED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Build
+        run: npm run build
+
+      - name: Full suite (session canary, every package, attribution)
+        run: npm run test:runtime -- ${{ matrix.vitest }}

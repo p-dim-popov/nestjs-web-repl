@@ -7,6 +7,10 @@ name: Release
 #  2. Merging that PR pushes to main with no pending changesets, so the same
 #     job publishes every package whose version is not yet on npm.
 #
+# The release job verifies nothing itself: it runs behind verify.yml on the
+# same commit (ADR 0006). This file keeps its name because npm trusted
+# publishing is keyed on `release.yml`.
+#
 # Human prerequisites (not agent steps):
 #  - npm publish access for the @remote-repl scope and the nestjs-web-repl
 #    package: either configure npm trusted publishing (OIDC) on npmjs.com for
@@ -28,70 +32,42 @@ permissions:
   contents: read
 
 jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   release:
     name: Version or publish
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The contract and cross-framework suites run against a real Redis, as in
-    # ci.yml; without it the nestjs package's tests fail with ECONNREFUSED.
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-    env:
-      REDIS_URL: redis://127.0.0.1:6379
     permissions:
       contents: write
       pull-requests: write
       id-token: write
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Node 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          registry-url: https://registry.npmjs.org
-          cache: npm
+      # The dev Node from mise.toml; its bundled npm clears the >= 11.5.1
+      # trusted-publishing floor, so there is no npm upgrade step.
+      - uses: ./.github/actions/setup
 
-      - name: Ensure npm >= 11.5.1 (OIDC trusted publishing floor)
-        run: npm install -g npm@latest
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Protocol schema drift check
-        run: npm run schema:check
-
-      - name: Test
-        run: npm test
+      - name: Use the NPM_TOKEN secret instead of OIDC, when one is set
+        if: env.NPM_TOKEN != ''
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc
 
       - name: Open the Version Packages PR, or publish
         id: changesets
         uses: changesets/action@v2
         with:
+          # changeset:publish builds first, so the tarballs are fresh.
           version-script: npm run changeset:version
           publish-script: npm run changeset:publish
           pr-title: 'chore(release): version packages'
           commit-message: 'chore(release): version packages'
         env:
-          # Empty when the repository has no NPM_TOKEN secret: npm then uses
-          # OIDC trusted publishing (id-token: write above). Set the secret
-          # to publish with a granular access token instead.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'

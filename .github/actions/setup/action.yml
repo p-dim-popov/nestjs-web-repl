@@ -1,0 +1,23 @@
+name: Setup
+description: >-
+  The environment module (ADR 0006): install the runtimes pinned in mise.toml,
+  restore the npm cache and run npm ci. Every job uses this and nothing else.
+
+runs:
+  using: composite
+  steps:
+    - name: Install the runtimes pinned in mise.toml
+      uses: jdx/mise-action@v5
+      with:
+        cache: true
+
+    - name: Restore the npm cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.npm
+        key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: npm-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci

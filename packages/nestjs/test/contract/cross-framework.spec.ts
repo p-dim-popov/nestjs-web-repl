@@ -22,6 +22,7 @@ import {
   type Instance,
 } from './harness';
 import { transports, type Transport } from './transports';
+import { redisVerdict } from './redis-preflight';
 import { REMOTE_REPL_TOPICS, type RemoteReplSysMessage, type RemoteReplOptions } from '@remote-repl/core';
 
 interface Pair {
@@ -59,7 +60,10 @@ const bootOrderedPair = async (
   return { owner: pair.a, peer: pair.b, prefix: pair.prefix, closeAll: pair.closeAll };
 };
 
-describe.each(transports)('NestJS <-> Express over $name', (transport: Transport) => {
+// 'skip' with one warning when no Redis answers REDIS_URL; throws under REDIS_REQUIRED=1.
+const redis = await redisVerdict();
+
+describe.skipIf(redis === 'skip').each(transports)('NestJS <-> Express over $name', (transport: Transport) => {
   describe.each(orderings)('$label', (ordering) => {
     describe('single execution & cross-framework relay', () => {
       let pair: Pair;

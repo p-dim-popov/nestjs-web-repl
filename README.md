@@ -572,9 +572,10 @@ instance stops, its leases expire and the cluster is whole again
 
 ## Runtime support
 
-Node 20+ is the supported runtime. CI runs the full suite on Node, and a red
-Node run blocks a release. Bun and Deno are best-effort: CI runs the same suite
-under them without blocking a release. The one file that depends on Node
+CI runs the full suite on Node 22, 24 and 26, on Bun and on Deno, and a red
+run on any of them blocks a release. The exact Bun and Deno versions are pinned
+in the repo's `mise.toml`. The declared minimum (`engines`) is still Node 20,
+which CI does not run. The one file that depends on Node
 internals is the `node:repl` session layer. The engine talks to it through a
 session interface, so a runtime-specific session can replace it without engine
 changes.

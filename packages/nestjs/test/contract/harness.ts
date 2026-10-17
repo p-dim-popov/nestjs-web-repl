@@ -9,7 +9,8 @@ import { RemoteReplModule } from '../../src/remote-repl.module';
 import type { RemoteReplModuleOptions } from '../../src/interfaces/remote-repl-options.interface';
 import type { Transport } from './transports';
 
-export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
+export { REDIS_URL } from './redis-preflight';
+import { REDIS_URL } from './redis-preflight';
 
 /**
  * A booted, listening instance plus the HTTP handle tests drive it through.

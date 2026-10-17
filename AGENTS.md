@@ -31,11 +31,19 @@ The repo is an npm-workspaces monorepo: the root `package.json` is private
 with `workspaces: ["packages/*"]`, and every root script delegates to every
 workspace. Run everything from the workspace root.
 
+- Runtimes: `mise install` (reads the root `mise.toml`, the single pin for
+  the dev Node, Bun and Deno; CI installs from the same file, ADR 0006).
 - Install: `npm install` (at the root; `node_modules` is hoisted there)
 - Run tests: `npm test` (Vitest — unit specs under `packages/*/src/`, e2e under
   `packages/nestjs/test/`). `packages/nestjs/test/contract/` needs a reachable
   Redis (`docker run -d -p 6379:6379 redis:7-alpine`; override the address
-  with `REDIS_URL`).
+  with `REDIS_URL`): without one it SKIPS with one warning per spec file
+  (`test/contract/redis-preflight.ts` declares that requirement once); with
+  `REDIS_REQUIRED=1` (set in CI's runtime legs) it fails with one message.
+- Probe a runtime: `npm run test:runtime -- <vitest command>` runs
+  `scripts/runtime-suite.mjs`: the session canary first, then every
+  package's suite through that command, then the attribution report (see
+  "Runtime support"). E.g. `npm run test:runtime -- bun --bun x vitest run`.
 - Build: `npm run build` (each package emits its own `dist/` via `tsc`;
   `packages/core` must produce `dist/index.js`, `dist/index.d.ts` and
   `dist/ui/vs/`, the Monaco copy made by its `scripts/copy-monaco.mjs`;
@@ -84,29 +92,32 @@ complete.
 
 ## Runtime support (standing rule)
 
-- **Node (>= 20) is the supported, release-blocking runtime.** CI runs the
-  full suite on Node 22.x and 24.x (`build-test` in `.github/workflows/ci.yml`);
-  those legs must be green.
-- **Bun and Deno are best-effort.** The `runtime-matrix` job runs the same
-  suite (unit + contract + e2e, Redis service on every leg) under each
-  runtime itself -- `bun --bun x vitest run` (the `--bun` flag is required or
-  bunx honours vitest's node shebang and runs it on Node) and
-  `deno run -A npm:vitest run --pool=threads` (the default forks pool exits 1
-  with a BrokenPipe on Deno after a green run) -- per package, because the
-  root `npm test` would run vitest under Node. The job has
-  `continue-on-error: true`: its status is reported, never blocking. Promote a
-  runtime to supported by removing that line once it has stayed green -- no
-  code change. Never gate a release on a best-effort leg, and never patch the
-  engine to chase one.
-- **Failure attribution on Bun/Deno.** The session spec
-  (`packages/core/src/session/repl-session.spec.ts`) runs first as its own
-  step: it is the `node:repl` parity canary (sentinel prompt, continuation
-  prompt, buffered-command state are verified on Node only). A red session
-  step means "session layer": do not weaken the spec; the drop-in point is
-  the session seam in `packages/core/src/session/` (a runtime-specific
-  session implementation replaces `ReplSession` there, the engine is
-  untouched). A red full suite with a green session step is attributed
-  elsewhere. The job writes this attribution to the step summary.
+- **Every runtime in the matrix is supported and release-blocking** (ADR
+  0006): Node 22, 24 and 26, Bun and Deno. `.github/workflows/verify.yml` is
+  the one verification recipe; `pr.yml` calls it on every pull request and
+  `release.yml` calls it on every push to `main` and publishes only behind
+  it. Its `runtime` matrix runs the full suite (unit + contract + e2e, Redis
+  service on every leg, `REDIS_REQUIRED=1`) on each runtime through
+  `npm run test:runtime -- <vitest command>`, because the root `npm test`
+  would run vitest under Node: `bun --bun x vitest run` (the `--bun` flag is
+  required or bunx honours vitest's node shebang and runs it on Node),
+  `deno run -A npm:vitest run --pool=threads` (the default forks pool exits
+  1 with a BrokenPipe on Deno after a green run), `mise x node@22 -- npx
+  vitest run` for the other Node lines. Its `dev` job is the contributor's
+  laptop: the Node from `mise.toml`, no Redis, plain `npm test` (the contract
+  suite skips itself there). A red runtime leg blocks: fix it at the session
+  seam or drop the runtime from the matrix, `mise.toml` and this list. Never
+  patch the engine to chase a runtime. `mise.toml` pins the dev Node by major
+  line and Bun and Deno exactly; bump it deliberately.
+- **Failure attribution.** `scripts/runtime-suite.mjs` runs the session spec
+  (`packages/core/src/session/repl-session.spec.ts`) FIRST, alone: it is the
+  `node:repl` parity canary (sentinel prompt, continuation prompt,
+  buffered-command state are verified on Node only). A red canary means
+  "session layer": do not weaken the spec; the drop-in point is the session
+  seam in `packages/core/src/session/` (a runtime-specific session
+  implementation replaces `ReplSession` there, the engine is untouched). A
+  red full suite with a green canary is attributed elsewhere. The script
+  writes this attribution to the step summary.
 - **Portability fences.** `packages/core/src/runtime-portability.spec.ts`
   forbids the `NodeJS.*` type namespace in core sources (use
   `ReturnType<typeof setTimeout>`); `src/ui/monaco-assets.ts` guards
@@ -122,10 +133,12 @@ changesets), `.github/workflows/`, `README.md`
 (the full consumer documentation for every package; each package also has a
 short `README.md` that links back to it), `CHANGELOG.md` (pre-split history
 only; per-package `CHANGELOG.md` files are generated from here on),
-`CONTRIBUTING.md`, `GLOSSARY.md` (the ubiquitous language), `docs/adr/`
+`CONTRIBUTING.md`, `GLOSSARY.md` (the ubiquitous language), `mise.toml` (the
+runtime pin), `scripts/runtime-suite.mjs` (the runtime probe), `docs/adr/`
 (architecture decision records: `0001` separate packages over subpath exports,
 `0002` no rxjs in core, `0003` no wire protocol version, `0004` the
-`remote-repl` name and why the web UI is one client surface, not the product), `docs/agents/` (agent
+`remote-repl` name and why the web UI is one client surface, not the product,
+`0006` the CI shape), `docs/agents/` (agent
 workflow notes), `skills/` (consumer-facing agent skills, see below) and
 `examples/stackblitz/` (a standalone demo against the published package, not
 a workspace). `packages/nestjs/src/docs.spec.ts` checks that every path
