@@ -4,18 +4,22 @@
 // relays to it, sees its output, honours its lease and shares its replay
 // buffer. Each scenario runs once per shipped Redis transport and once per
 // owner framework (NestJS owning / Express owning). Only external behavior is
-// asserted: HTTP status codes, SSE frames, and raw Redis traffic.
+// asserted: HTTP status codes, SSE frames, and raw Redis traffic. Each pair
+// gets its own topic prefix, so this file runs alongside contract.spec.ts (and
+// any other process on the same Redis) without hearing it.
 import {
-  frameworks,
+  bootPair,
+  executorOf,
+  frameworkNamed,
   isDoneFor,
   isOutputContaining,
   isPing,
   observeRedis,
-  type Framework,
-  type Instance,
   openSse,
   sleep,
   uniqueChannel,
+  type Framework,
+  type Instance,
 } from './harness';
 import { transports, type Transport } from './transports';
 import { TOPICS, type SysMessage, type WebReplOptions } from '@remote-repl/core';
@@ -25,43 +29,42 @@ interface Pair {
   owner: Instance;
   /** The other framework; it only relays. */
   peer: Instance;
+  /** The pair's own topic prefix (raw-Redis observers watch `prefix + TOPICS.x`). */
+  prefix: string;
   closeAll(): Promise<void>;
 }
 
-const byName = (name: Framework['name']) => frameworks.find((f) => f.name === name)!;
-const orderings = [
-  { label: 'NestJS owns, Express relays', owner: byName('nestjs'), peer: byName('express') },
-  { label: 'Express owns, NestJS relays', owner: byName('express'), peer: byName('nestjs') },
+interface Ordering {
+  label: string;
+  owner: Framework;
+  peer: Framework;
+}
+
+const orderings: Ordering[] = [
+  { label: 'NestJS owns, Express relays', owner: frameworkNamed('nestjs'), peer: frameworkNamed('express') },
+  { label: 'Express owns, NestJS relays', owner: frameworkNamed('express'), peer: frameworkNamed('nestjs') },
 ];
 
-const bootPair = async (
+/** `bootPair` with the owner as A and the peer as B, under a fresh topic prefix. */
+const bootOrderedPair = async (
   transport: Transport,
-  ordering: (typeof orderings)[number],
+  ordering: Ordering,
   options: Partial<WebReplOptions> = {},
 ): Promise<Pair> => {
-  const to = await transport.make();
-  const tp = await transport.make();
-  const owner = await ordering.owner.boot(to.adapter, { instanceId: 'OWNER', ...options });
-  const peer = await ordering.peer.boot(tp.adapter, { instanceId: 'PEER', ...options });
-  return {
-    owner,
-    peer,
-    closeAll: async () => {
-      await Promise.allSettled([owner.close(), peer.close()]);
-      await Promise.all([to.close(), tp.close()]);
-    },
-  };
+  const pair = await bootPair(transport, {
+    options,
+    hosts: [ordering.owner, ordering.peer],
+    instanceIds: ['OWNER', 'PEER'],
+  });
+  return { owner: pair.a, peer: pair.b, prefix: pair.prefix, closeAll: pair.closeAll };
 };
-
-const executorOf = (f: { event: { data: unknown } }) =>
-  (f.event.data as { instanceId: string }).instanceId;
 
 describe.each(transports)('NestJS <-> Express over $name', (transport: Transport) => {
   describe.each(orderings)('$label', (ordering) => {
     describe('single execution & cross-framework relay', () => {
       let pair: Pair;
       beforeAll(async () => {
-        pair = await bootPair(transport, ordering);
+        pair = await bootOrderedPair(transport, ordering);
       });
       afterAll(() => pair.closeAll());
 
@@ -103,8 +106,9 @@ describe.each(transports)('NestJS <-> Express over $name', (transport: Transport
 
       it('the owner claims the channel and keeps heartbeating it on the sys topic; the relaying framework never claims', async () => {
         const observer = await observeRedis();
-        const wire = await observer.watch([TOPICS.sys]);
-        const pair = await bootPair(transport, ordering, lease);
+        const pair = await bootOrderedPair(transport, ordering, lease);
+        const sysTopic = pair.prefix + TOPICS.sys;
+        const wire = await observer.watch([sysTopic]);
         try {
           const { owner, peer } = pair;
           const channel = uniqueChannel('sys');
@@ -118,8 +122,8 @@ describe.each(transports)('NestJS <-> Express over $name', (transport: Transport
           ssePeer.close();
 
           const sys = wire
-            .filter((m) => m.startsWith(`${TOPICS.sys} `))
-            .map((m) => JSON.parse(m.slice(TOPICS.sys.length + 1)) as SysMessage)
+            .filter((m) => m.startsWith(`${sysTopic} `))
+            .map((m) => JSON.parse(m.slice(sysTopic.length + 1)) as SysMessage)
             .filter((m) => m.channel === channel);
           const claims = sys.filter((m) => m.kind === 'claim');
           expect(claims.length).toBeGreaterThanOrEqual(2); // initial claim + >= 1 heartbeat
@@ -137,7 +141,7 @@ describe.each(transports)('NestJS <-> Express over $name', (transport: Transport
       const lease = { ownerHeartbeatInterval: 200, ownerLeaseTtl: 400 };
 
       it('after the owning framework dies and its lease expires, the other framework takes over with a fresh session', async () => {
-        const pair = await bootPair(transport, ordering, lease);
+        const pair = await bootOrderedPair(transport, ordering, lease);
         try {
           const { owner, peer } = pair;
           const channel = uniqueChannel('xdead');
@@ -168,7 +172,7 @@ describe.each(transports)('NestJS <-> Express over $name', (transport: Transport
     describe('SSE replay across frameworks', () => {
       let pair: Pair;
       beforeAll(async () => {
-        pair = await bootPair(transport, ordering, { heartbeatInterval: 150 });
+        pair = await bootOrderedPair(transport, ordering, { heartbeatInterval: 150 });
       });
       afterAll(() => pair.closeAll());
 

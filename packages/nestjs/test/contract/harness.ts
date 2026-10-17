@@ -7,6 +7,7 @@ import { createReplEngine, createReplRouter } from '@remote-repl/express';
 import type { WebReplAdapter, WebReplEvent, WebReplOptions } from '@remote-repl/core';
 import { WebReplModule } from '../../src/web-repl.module';
 import type { WebReplModuleOptions } from '../../src/interfaces/web-repl-options.interface';
+import type { Transport } from './transports';
 
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 
@@ -95,6 +96,9 @@ export const frameworks: Framework[] = [
   { name: 'nestjs', boot: bootInstance },
   { name: 'express', boot: bootExpressInstance },
 ];
+
+export const frameworkNamed = (name: Framework['name']): Framework =>
+  frameworks.find((f) => f.name === name)!;
 
 /** One SSE frame as it arrived on the wire: the `id:` line plus the parsed `data:` JSON. */
 export interface Frame {
@@ -202,6 +206,61 @@ export const isPing = (f: Frame) =>
 
 export const uniqueChannel = (label: string): string =>
   `${label}-${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * A fresh topic prefix (`<label>-<random>:`) for one scenario's instances, so
+ * every scenario talks on topics only it can see. Spec files run in parallel
+ * vitest workers and other processes may share the same Redis; without this
+ * a `claim` or `out` message from an unrelated pair would land in this one.
+ */
+export const uniquePrefix = (label: string): string => `${uniqueChannel(label)}:`;
+
+/** The `instanceId` announced by a `command` (execution-start) event. */
+export const executorOf = (f: { event: { data: unknown } }) =>
+  (f.event.data as { instanceId: string }).instanceId;
+
+/** Two instances sharing the real Redis under one topic prefix. */
+export interface Pair {
+  a: Instance;
+  b: Instance;
+  /** The topic prefix both instances' transports use; scope raw-Redis observers to it. */
+  prefix: string;
+  closeAll(): Promise<void>;
+}
+
+export interface PairSpec {
+  options?: Partial<WebReplOptions>;
+  /** The framework hosting A and the one hosting B; default both NestJS. */
+  hosts?: [Framework, Framework];
+  instanceIds?: [string, string];
+  /** Defaults to a fresh `uniquePrefix('pair')`. */
+  prefix?: string;
+}
+
+/**
+ * Boots instances A and B on fresh adapters of `transport` (one per instance),
+ * both under the same topic prefix. `closeAll` stops the apps, then quits the
+ * adapters' publisher clients.
+ */
+export const bootPair = async (
+  transport: Transport,
+  { options = {}, hosts, instanceIds = ['A', 'B'], prefix = uniquePrefix('pair') }: PairSpec = {},
+): Promise<Pair> => {
+  const [hostA, hostB] = hosts ?? [frameworkNamed('nestjs'), frameworkNamed('nestjs')];
+  const ta = await transport.make({ prefix });
+  const tb = await transport.make({ prefix });
+  const a = await hostA.boot(ta.adapter, { instanceId: instanceIds[0], ...options });
+  const b = await hostB.boot(tb.adapter, { instanceId: instanceIds[1], ...options });
+  return {
+    a,
+    b,
+    prefix,
+    closeAll: async () => {
+      await Promise.allSettled([a.close(), b.close()]);
+      await Promise.all([ta.close(), tb.close()]);
+    },
+  };
+};
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

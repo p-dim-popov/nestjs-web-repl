@@ -4,8 +4,15 @@
 // shipped Redis transport, proving the transport is an interchangeable detail.
 // Tests assert only external behavior: HTTP status codes, SSE frames on the
 // wire, and traffic observed by an independent raw Redis client.
+//
+// Every pair of instances gets its own topic prefix (see `bootPair`), so this
+// file, cross-framework.spec.ts and any other process on the same Redis never
+// hear each other. The one deliberate exception is the "no prefix" scenario
+// at the bottom, which documents the leak the prefix exists to prevent.
 import {
   bootInstance,
+  bootPair,
+  executorOf,
   isDoneFor,
   isOutputContaining,
   isPing,
@@ -13,39 +20,11 @@ import {
   openSse,
   sleep,
   uniqueChannel,
-  type Instance,
+  uniquePrefix,
+  type Pair,
 } from './harness';
-import type { WebReplModuleOptions } from '../../src/interfaces/web-repl-options.interface';
 import { TOPICS } from '@remote-repl/core';
 import { transports, type Transport } from './transports';
-
-interface Pair {
-  a: Instance;
-  b: Instance;
-  closeAll(): Promise<void>;
-}
-
-/** Two instances ('A' and 'B') on fresh adapters of the given transport, sharing the real Redis. */
-const bootPair = async (
-  transport: Transport,
-  options: Partial<WebReplModuleOptions> = {},
-): Promise<Pair> => {
-  const ta = await transport.make();
-  const tb = await transport.make();
-  const a = await bootInstance(ta.adapter, { instanceId: 'A', ...options });
-  const b = await bootInstance(tb.adapter, { instanceId: 'B', ...options });
-  return {
-    a,
-    b,
-    closeAll: async () => {
-      await Promise.allSettled([a.close(), b.close()]);
-      await Promise.all([ta.close(), tb.close()]);
-    },
-  };
-};
-
-const executorOf = (f: { event: { data: unknown } }) =>
-  (f.event.data as { instanceId: string }).instanceId;
 
 describe.each(transports)('contract over $name', (transport: Transport) => {
   describe('ownership & single execution', () => {
@@ -98,7 +77,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
     const lease = { ownerHeartbeatInterval: 200, ownerLeaseTtl: 400 };
 
     it('a live, heartbeating owner is never preempted, even long after the lease TTL', async () => {
-      const pair = await bootPair(transport, lease);
+      const pair = await bootPair(transport, { options: lease });
       try {
         const { a, b } = pair;
         const channel = uniqueChannel('live');
@@ -123,7 +102,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
     }, 20_000);
 
     it('after the owner dies and the lease expires, the next command’s origin takes over with a fresh session', async () => {
-      const pair = await bootPair(transport, lease);
+      const pair = await bootPair(transport, { options: lease });
       try {
         const { a, b } = pair;
         const channel = uniqueChannel('dead');
@@ -154,7 +133,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
   describe('SSE replay', () => {
     let pair: Pair;
     beforeAll(async () => {
-      pair = await bootPair(transport, { heartbeatInterval: 150 });
+      pair = await bootPair(transport, { options: { heartbeatInterval: 150 } });
     });
     afterAll(() => pair.closeAll());
 
@@ -246,7 +225,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       // Own topic prefix: other spec files share this Redis in parallel
       // workers, so the subscriber count must be on topics only this
       // instance could touch.
-      const prefix = `${uniqueChannel('off')}:`;
+      const prefix = uniquePrefix('off');
       const topics = Object.values(TOPICS).map((t) => prefix + t);
       const log = await observer.watch(topics);
       const before = await observer.numsub(topics); // includes the observer itself
@@ -290,6 +269,10 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       };
     };
 
+    // The single deliberate no-prefix scenario in the contract suites. It
+    // shares the unprefixed topics with any other unprefixed run on this
+    // Redis, so it relies on a unique channel name (SSE and ownership are
+    // per channel) and asserts only on its own commandIds.
     it('with no prefix (the default), two apps leak output and ownership to each other -- documented current behavior', async () => {
       const apps = await bootApps();
       try {
@@ -311,8 +294,9 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
 
     it('with the SAME prefix, the apps share output and ownership like replicas -- the prefix is a tenancy key, not an app id', async () => {
       const observer = await observeRedis();
-      const wire = await observer.watch(['shared:webrepl:out']);
-      const apps = await bootApps('shared:', 'shared:');
+      const shared = uniquePrefix('shared');
+      const wire = await observer.watch([shared + TOPICS.out]);
+      const apps = await bootApps(shared, shared);
       try {
         const channel = uniqueChannel('same-prefix');
         const sseB = await openSse(apps.b.port, channel);
@@ -325,7 +309,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
         expect(out.event.commandId).toBe(second.commandId);
         // Both apps put their traffic on the same prefixed wire topic.
         expect(wire.length).toBeGreaterThan(0);
-        expect(wire.every((m) => m.startsWith('shared:webrepl:out '))).toBe(true);
+        expect(wire.every((m) => m.startsWith(`${shared}${TOPICS.out} `))).toBe(true);
         sseB.close();
       } finally {
         await apps.closeAll();
@@ -335,8 +319,10 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
 
     it('with different prefixes, the apps never exchange output or ownership', async () => {
       const observer = await observeRedis();
-      const prefixedOut = await observer.watch(['app-a:webrepl:out']);
-      const apps = await bootApps('app-a:', 'app-b:');
+      const prefixA = uniquePrefix('app-a');
+      const prefixB = uniquePrefix('app-b');
+      const prefixedOut = await observer.watch([prefixA + TOPICS.out]);
+      const apps = await bootApps(prefixA, prefixB);
       try {
         const channel = uniqueChannel('isolated');
         const sseA = await openSse(apps.a.port, channel);
@@ -359,7 +345,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
 
         // The prefix is prepended verbatim to the wire topic names.
         expect(prefixedOut.length).toBeGreaterThan(0);
-        expect(prefixedOut.every((m) => m.startsWith('app-a:webrepl:out '))).toBe(true);
+        expect(prefixedOut.every((m) => m.startsWith(`${prefixA}${TOPICS.out} `))).toBe(true);
         sseA.close();
         sseB.close();
       } finally {
