@@ -197,7 +197,7 @@ describe('built output (when a dist exists)', () => {
 describe('vocabulary of the @remote-repl packages', () => {
   const PACKAGES = ['core', 'nestjs', 'express', 'redis'];
   const LEGACY_NAME = ['nestjs', 'web', 'repl'].join('-');
-  const FORBIDDEN = new RegExp(['web' + 'repl', 'web-' + 'repl', 'Adap' + 'ter'].join('|'), 'i');
+  const FORBIDDEN = new RegExp(['web' + '[\\s_-]?' + 'repl', 'Adap' + 'ter'].join('|'), 'i');
   const trackedFiles = (): string[] =>
     execFileSync('git', ['ls-files', '-z', ...PACKAGES.map((p) => `packages/${p}`)], { cwd: repoRoot })
       .toString('utf8')

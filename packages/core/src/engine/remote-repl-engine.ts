@@ -8,6 +8,14 @@ import { ReplSession } from '../session/repl-session';
 
 export type RemoteReplContextFactory = () => Record<string, unknown>;
 
+/**
+ * The teardown hook of a transport written against nestjs-web-repl <= 2.3.x.
+ * `stop()` calls it when the transport has no `close()` (ADR 0005).
+ */
+interface LegacyTransportTeardown {
+  onModuleDestroy?(): void | Promise<void>;
+}
+
 /** The minimal logger shape the engine needs; a Nest `Logger` or `console` both fit. */
 export interface RemoteReplLogger {
   warn(message: string): void;
@@ -180,7 +188,7 @@ export class RemoteReplEngine {
     this.channels.clear();
     // `close()` is the transport contract; `onModuleDestroy()` is what a
     // transport written against nestjs-web-repl <= 2.3.x implements instead.
-    const legacy = this.transport as { onModuleDestroy?(): void | Promise<void> };
+    const legacy = this.transport as LegacyTransportTeardown;
     await (this.transport.close ?? legacy.onModuleDestroy)?.call(this.transport);
   }
 

@@ -328,7 +328,7 @@ your session. The engine solves this with an **ownership + fan-out** protocol:
   interval of slack against publish or delivery jitter, and is never preempted
   this way. A takeover loses the in-memory variables of that channel, because the
   session of the dead owner is gone. It restores availability instead of a
-  channel that is stuck fleet-wide (see [Limitations](#limitations)).
+  channel that is stuck cluster-wide (see [Limitations](#limitations)).
 - Ownership goes to the instance whose command handler runs first. If two
   instances race to claim the same new channel at the same instant, the result is
   **last-claim-wins** (see [Limitations](#limitations)).
@@ -619,7 +619,7 @@ the skill after a package upgrade.
   stop. After `ownerLeaseTtl`, the origin instance of the next command for that
   channel takes over and starts a fresh session. The variables of the dead
   session are gone. The channel becomes usable again instead of stuck
-  fleet-wide. This is better than a permanent stuck channel, but it is still a
+  cluster-wide. This is better than a permanent stuck channel, but it is still a
   data loss on unclean owner death. Like last-claim-wins above, it is a narrow
   multi-instance edge case.
 - **The NestJS package relies on a deep import of `@nestjs/core` internals**

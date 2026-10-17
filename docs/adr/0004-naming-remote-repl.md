@@ -40,7 +40,7 @@ HTTP exists only in the top layer. A process with no web server at all, such as
 a queue worker, a cron job or an Electron main process, can run the engine with
 a transport and execute commands for a channel. A client can speak the transport
 directly instead of HTTP: publish a command message with the target's instance
-id as `originInstanceId`, subscribe to the output topic, and no adapter package
+id as `originInstanceId`, subscribe to the output topic, and no framework package
 is involved on either side. The protocol document is the contract that makes
 this possible without reading the TypeScript source, which is also why the
 repository that holds that document carries the language-neutral name rather
@@ -59,7 +59,7 @@ document, whether it lives in this repository or in its own.
   binding. The package names (`@remote-repl/nestjs`, `@remote-repl/express`)
   say which runtime an entry point is for.
 - **Keeping `nestjs-web-repl` as the only name.** Rejected: it excludes the
-  Express adapter and every future one. It survives as the shim package so
+  Express package and every future one. It survives as the shim package so
   that existing consumers need no change.
 
 ## Consequences

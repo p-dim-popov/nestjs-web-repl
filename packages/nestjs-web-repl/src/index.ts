@@ -67,9 +67,6 @@ export type WebReplEvent = RemoteReplEvent;
 /** @deprecated Use `RemoteReplSseEventType` from `@remote-repl/nestjs` (or `@remote-repl/core`). */
 export type SseEventType = RemoteReplSseEventType;
 
-type RegisterOptions = Parameters<typeof RemoteReplModule.register>[0];
-type RegisterAsyncOptions = Parameters<typeof RemoteReplModule.registerAsync>[0];
-
 // `adapter` -> `transport`, whatever DI form the value takes (a ready
 // instance, a class, `{ useClass }`, `{ useFactory }`): the form is the
 // VALUE, so renaming the key is the whole translation. An absent `adapter`
@@ -88,12 +85,12 @@ function translate<T extends { adapter?: WebReplAdapterConfig }>(
  */
 export class WebReplModule {
   static register(options: WebReplModuleOptions & WebReplModuleExtras): DynamicModule {
-    return RemoteReplModule.register(translate(options) as RegisterOptions);
+    return RemoteReplModule.register(translate(options));
   }
 
   static registerAsync(
-    options: Omit<RegisterAsyncOptions, 'transport'> & WebReplModuleExtras,
+    options: Omit<Parameters<typeof RemoteReplModule.registerAsync>[0], 'transport'> & WebReplModuleExtras,
   ): DynamicModule {
-    return RemoteReplModule.registerAsync(translate(options) as RegisterAsyncOptions);
+    return RemoteReplModule.registerAsync(translate(options));
   }
 }
