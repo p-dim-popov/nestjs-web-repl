@@ -57,6 +57,38 @@ The full suite, `npm run build`, the typecheck and `npm run schema:check` (the
 protocol schema drift check) must all be green before you consider a change
 complete.
 
+## Runtime support (standing rule)
+
+- **Node (>= 20) is the supported, release-blocking runtime.** CI runs the
+  full suite on Node 22.x and 24.x (`build-test` in `.github/workflows/ci.yml`);
+  those legs must be green.
+- **Bun and Deno are best-effort.** The `runtime-matrix` job runs the same
+  suite (unit + contract + e2e, Redis service on every leg) under each
+  runtime itself -- `bun --bun x vitest run` (the `--bun` flag is required or
+  bunx honours vitest's node shebang and runs it on Node) and
+  `deno run -A npm:vitest run --pool=threads` (the default forks pool exits 1
+  with a BrokenPipe on Deno after a green run) -- per package, because the
+  root `npm test` would run vitest under Node. The job has
+  `continue-on-error: true`: its status is reported, never blocking. Promote a
+  runtime to supported by removing that line once it has stayed green -- no
+  code change. Never gate a release on a best-effort leg, and never patch the
+  engine to chase one.
+- **Failure attribution on Bun/Deno.** The session spec
+  (`packages/core/src/session/repl-session.spec.ts`) runs first as its own
+  step: it is the `node:repl` parity canary (sentinel prompt, continuation
+  prompt, buffered-command state are verified on Node only). A red session
+  step means "session layer": do not weaken the spec; the drop-in point is
+  the session seam in `packages/core/src/session/` (a runtime-specific
+  session implementation replaces `ReplSession` there, the engine is
+  untouched). A red full suite with a green session step is attributed
+  elsewhere. The job writes this attribution to the step summary.
+- **Portability fences.** `packages/core/src/runtime-portability.spec.ts`
+  forbids the `NodeJS.*` type namespace in core sources (use
+  `ReturnType<typeof setTimeout>`); `src/ui/monaco-assets.ts` guards
+  `__dirname` / `require.resolve` and returns null (asset 404) when neither
+  a bundled `vs` copy nor the package resolver is available. Keep new core
+  code free of Node-only globals, or guard them the same way.
+
 ## Project layout
 
 Root: `package.json` (private workspace root; also owns the semantic-release
@@ -103,8 +135,9 @@ live under `packages/`:
   - `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
     `src/ui/monaco-assets.ts` serves `dist/ui/vs` (built) or falls back to the
     `monaco-editor` devDependency through Node's resolver (hoisted to the root
-    `node_modules`); it is also the sole path-traversal guard for the asset
-    route.
+    `node_modules`), and yields null when neither is reachable (`__dirname` /
+    `require.resolve` are guarded, see "Runtime support"); it is also the
+    sole path-traversal guard for the asset route.
   - `src/http/` — the framework-free HTTP layer. `handlers.ts` is the
     shared route-handler layer every framework adapter wires to:
     `createReplHandlers(engine, { enabled })` returns plain-data handlers —
