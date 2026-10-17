@@ -339,18 +339,24 @@ change or that spec goes red. Packages live under `packages/`:
   extra in every DI form plus `registerAsync`. No `bin` (see `CHANGELOG.md`;
   skills install via skills.sh, see `skills/` below).
 - `skills/` — the consumer-facing Claude Code skills (distinct from this
-  AGENTS.md, which is for contributors), one directory per framework package,
-  each a single `SKILL.md` with `name` + `description` frontmatter:
-  `skills/nestjs-web-repl/` (`@remote-repl/nestjs` and the shim; frontmatter
+  AGENTS.md, which is for contributors), one directory per package, each a
+  single `SKILL.md` with `name` + `description` frontmatter:
+  `skills/remote-repl-nestjs/` (`@remote-repl/nestjs`),
+  `skills/nestjs-web-repl/` (the shim, with the legacy setup names; frontmatter
   `name: nestjs-web-repl` is the identity skills.sh keys on, keep it) and
   `skills/remote-repl-express/` (`@remote-repl/express`). Consumers install
   them with `npx skills add p-dim-popov/remote-repl/skills/<dir>`
   (skills.sh indexes `SKILL.md` files straight from the GitHub repo; nothing
-  is packed into npm tarballs, and there is no install CLI). Both must lead
-  with the "Security first" section before "Wire it up"; when a package's
-  public API or package name changes, update the matching skill in the same
-  change. `packages/nestjs/src/packaging.spec.ts` pins their existence,
-  frontmatter and key content.
+  is packed into npm tarballs, and there is no install CLI). Every skill
+  leads with "Security first" before "Wire it up" and has a "Use it" section
+  that teaches the POST + SSE pair read until `done`, the REPL vocabulary and
+  per-channel state, with outputs observed against the package examples
+  (re-run the examples when you change those tables). The two NestJS skills
+  share their "Security first" and "Use it" sections byte for byte: edit the
+  text in one, copy it to the other. When a package's public API or package
+  name changes, update the matching skill in the same change.
+  `packages/nestjs/src/packaging.spec.ts` pins the three directories, their
+  frontmatter, key content and the shared sections.
 
 ## Conventions
 

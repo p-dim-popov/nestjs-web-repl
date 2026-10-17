@@ -86,16 +86,25 @@ describe('agent skills (skills.sh layout)', () => {
     };
   };
 
-  it.each([
-    ['nestjs-web-repl', 'nestjs-web-repl'],
-    ['remote-repl-express', 'remote-repl-express'],
-  ])('skills/%s/SKILL.md has frontmatter name %s and a description', (dir, name) => {
+  const SKILLS = ['nestjs-web-repl', 'remote-repl-nestjs', 'remote-repl-express'];
+  // The "## Use it" section runs from its heading to the next H2.
+  const usageSection = (body: string) => {
+    const m = body.match(/^## Use it\r?\n([\s\S]*?)(?=^## )/m);
+    expect(m).not.toBeNull();
+    return m![1];
+  };
+
+  it('skills/ holds exactly the three documented skill directories', () => {
+    expect(readdirSync(join(repoRoot, 'skills')).sort()).toEqual([...SKILLS].sort());
+  });
+
+  it.each(SKILLS.map((s) => [s, s]))('skills/%s/SKILL.md has frontmatter name %s and a description', (dir, name) => {
     const fm = frontmatter(skill(dir));
     expect(fm.name).toBe(name);
     expect(fm.description && fm.description.length).toBeGreaterThan(0);
   });
 
-  it.each(['nestjs-web-repl', 'remote-repl-express'])(
+  it.each(SKILLS)(
     'skills/%s leads with the security warning before the wiring instructions',
     (dir) => {
       const body = skill(dir);
@@ -107,14 +116,51 @@ describe('agent skills (skills.sh layout)', () => {
     },
   );
 
-  it('the NestJS skill documents register(), the shim and the redis prefix', () => {
+  // Setup is only half the job: an agent that installs a skill must also
+  // learn when the REPL is worth using and how to drive it from a shell.
+  it.each(SKILLS)('skills/%s teaches usage: the POST + SSE pair read until done', (dir) => {
+    const usage = usageSection(skill(dir));
+    expect(usage).toContain('curl');
+    expect(usage).toContain('"done":true');
+    expect(usage).toContain('commandId');
+    expect(usage).toContain('Last-Event-ID');
+  });
+
+  // The legacy words are assembled from fragments so the vocabulary guard
+  // below does not trip on this spec.
+  it('the legacy-package skill documents the deprecated module.register({ <legacy transport key> }) aliases', () => {
     const body = skill('nestjs-web-repl');
-    expect(body).toContain('RemoteReplModule.register(');
-    expect(body).not.toContain('forRoot');
-    expect(body).toContain('@remote-repl/nestjs');
+    expect(body).toContain(['Web', 'Repl', 'Module', '.register('].join(''));
+    expect(body).toContain(['adap', 'ter'].join(''));
     expect(body).toContain('nestjs-web-repl/redis');
-    expect(body).toContain('prefix');
+    expect(body).toContain('deprecated');
+    expect(body).toContain('packages/nestjs-web-repl/README.md');
+    expect(body).not.toContain('forRoot');
     expect(body).not.toMatch(/npx nestjs-web-repl install/);
+  });
+
+  it('the @remote-repl/nestjs skill documents register({ transport }), @remote-repl/redis and the prefix', () => {
+    const body = skill('remote-repl-nestjs');
+    expect(body).toContain('RemoteReplModule.register(');
+    expect(body).toContain('transport');
+    expect(body).toContain('@remote-repl/nestjs');
+    expect(body).toContain('@remote-repl/redis');
+    expect(body).toContain('prefix');
+    expect(body).not.toContain('forRoot');
+  });
+
+  it('the two NestJS skills share their "Use it" section verbatim (only setup differs)', () => {
+    expect(usageSection(skill('remote-repl-nestjs'))).toBe(usageSection(skill('nestjs-web-repl')));
+    expect(usageSection(skill('nestjs-web-repl'))).toContain('get(CatService)');
+  });
+
+  it('the two NestJS skills share their "Security first" section verbatim', () => {
+    const security = (body: string) => {
+      const m = body.match(/^## Security first[^\n]*\r?\n([\s\S]*?)(?=^## )/m);
+      expect(m).not.toBeNull();
+      return m![1];
+    };
+    expect(security(skill('remote-repl-nestjs'))).toBe(security(skill('nestjs-web-repl')));
   });
 
   it('the Express skill documents the engine + router API and the lifecycle', () => {

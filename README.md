@@ -582,21 +582,27 @@ changes.
 ## AI skills
 
 The repository ships [Claude Code](https://claude.com/claude-code) skills that
-teach coding agents how to install and use the REPL safely, one per framework.
-They live as plain files under `skills/` and install through the
-[skills.sh](https://skills.sh) ecosystem:
+teach coding agents how to install the REPL safely and how to drive it: when a
+live session beats a fresh test process, the POST + SSE pair read until the
+`done` event, the REPL vocabulary, and how state persists per channel. They
+live as plain files under `skills/` and install through the
+[skills.sh](https://skills.sh) ecosystem; pick the one for your package:
 
 ```bash
-# NestJS (@remote-repl/nestjs or the nestjs-web-repl shim)
+# @remote-repl/nestjs (RemoteReplModule, transport, @remote-repl/redis)
+npx skills add p-dim-popov/remote-repl/skills/remote-repl-nestjs
+
+# nestjs-web-repl shim (legacy names: WebReplModule, adapter, nestjs-web-repl/redis)
 npx skills add p-dim-popov/remote-repl/skills/nestjs-web-repl
 
-# Express (@remote-repl/express)
+# @remote-repl/express (createRemoteReplEngine + createRemoteReplRouter, your own context)
 npx skills add p-dim-popov/remote-repl/skills/remote-repl-express
 ```
 
-Each command writes the skill's `SKILL.md` into your agent's skills directory.
-Your agent picks it up in its next session. Run the command again to refresh
-the skill after a package upgrade.
+The two NestJS skills differ only in their setup section; their usage text is
+identical and a test keeps it so. Each command writes the skill's `SKILL.md`
+into your agent's skills directory. Your agent picks it up in its next session.
+Run the command again to refresh the skill after a package upgrade.
 
 ## Limitations
 
