@@ -1,12 +1,12 @@
 import { Router, json, type NextFunction, type Request, type Response } from 'express';
 import {
-  createReplHandlers,
-  InvalidCommandError,
-  parseLastEventId,
-  ReplDisabledError,
-  SSE_RESPONSE_HEADERS,
-  SSE_STREAM_PREAMBLE,
-  type ReplHandlerEngine,
+  createRemoteReplHandlers,
+  RemoteReplInvalidCommandError,
+  parseRemoteReplLastEventId,
+  RemoteReplDisabledError,
+  REMOTE_REPL_SSE_RESPONSE_HEADERS,
+  REMOTE_REPL_SSE_STREAM_PREAMBLE,
+  type RemoteReplHandlerEngine,
 } from '@remote-repl/core';
 
 /**
@@ -14,16 +14,16 @@ import {
  * routes, and `enabled` for the HTTP-edge 404 gate. `RemoteReplEngine`
  * satisfies it.
  */
-export type ReplRouterEngine = ReplHandlerEngine & { readonly enabled: boolean };
+export type RemoteReplRouterEngine = RemoteReplHandlerEngine & { readonly enabled: boolean };
 
-export interface ReplRouterOptions {
+export interface RemoteReplRouterOptions {
   /**
    * The engine the routes drive. Its `enabled` is the router's too: when
    * false every route 404s (security invariant: `enabled` is enforced at
    * runtime, here AND in the engine), and there is no second flag to get
    * out of step with it.
    */
-  engine: ReplRouterEngine;
+  engine: RemoteReplRouterEngine;
 }
 
 const NOT_FOUND = Object.freeze({ statusCode: 404, message: 'Not Found' });
@@ -32,17 +32,17 @@ const NOT_FOUND = Object.freeze({ statusCode: 404, message: 'Not Found' });
 // error pipeline. Explicit (rather than relying on Express 5's promise
 // forwarding) so the router behaves identically on Express 4.
 function sendError(err: unknown, res: Response, next: NextFunction): void {
-  if (err instanceof ReplDisabledError) {
+  if (err instanceof RemoteReplDisabledError) {
     res.status(404).json(NOT_FOUND);
-  } else if (err instanceof InvalidCommandError) {
+  } else if (err instanceof RemoteReplInvalidCommandError) {
     res.status(400).json({ statusCode: 400, message: err.message });
   } else {
     next(err);
   }
 }
 
-export function createReplRouter(options: ReplRouterOptions): Router {
-  const handlers = createReplHandlers(options.engine, { enabled: options.engine.enabled });
+export function createRemoteReplRouter(options: RemoteReplRouterOptions): Router {
+  const handlers = createRemoteReplHandlers(options.engine, { enabled: options.engine.enabled });
   const router = Router();
 
   // Landing: a visit with no channel gets a random one. `originalUrl` keeps
@@ -92,15 +92,15 @@ export function createReplRouter(options: ReplRouterOptions): Router {
     try {
       frames = handlers.stream(
         String(req.params.channel),
-        parseLastEventId(req.get('last-event-id')),
+        parseRemoteReplLastEventId(req.get('last-event-id')),
       );
     } catch (err) {
       sendError(err, res, next);
       return;
     }
     res.on('close', () => void frames.return?.());
-    res.writeHead(200, SSE_RESPONSE_HEADERS);
-    res.write(SSE_STREAM_PREAMBLE);
+    res.writeHead(200, REMOTE_REPL_SSE_RESPONSE_HEADERS);
+    res.write(REMOTE_REPL_SSE_STREAM_PREAMBLE);
     res.flushHeaders();
     void (async () => {
       try {

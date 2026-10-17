@@ -22,14 +22,14 @@ import {
   type Instance,
 } from './harness';
 import { transports, type Transport } from './transports';
-import { TOPICS, type SysMessage, type WebReplOptions } from '@remote-repl/core';
+import { REMOTE_REPL_TOPICS, type RemoteReplSysMessage, type RemoteReplOptions } from '@remote-repl/core';
 
 interface Pair {
   /** Receives the first command, so it claims the channel. */
   owner: Instance;
   /** The other framework; it only relays. */
   peer: Instance;
-  /** The pair's own topic prefix (raw-Redis observers watch `prefix + TOPICS.x`). */
+  /** The pair's own topic prefix (raw-Redis observers watch `prefix + REMOTE_REPL_TOPICS.x`). */
   prefix: string;
   closeAll(): Promise<void>;
 }
@@ -49,7 +49,7 @@ const orderings: Ordering[] = [
 const bootOrderedPair = async (
   transport: Transport,
   ordering: Ordering,
-  options: Partial<WebReplOptions> = {},
+  options: Partial<RemoteReplOptions> = {},
 ): Promise<Pair> => {
   const pair = await bootPair(transport, {
     options,
@@ -107,7 +107,7 @@ describe.each(transports)('NestJS <-> Express over $name', (transport: Transport
       it('the owner claims the channel and keeps heartbeating it on the sys topic; the relaying framework never claims', async () => {
         const observer = await observeRedis();
         const pair = await bootOrderedPair(transport, ordering, lease);
-        const sysTopic = pair.prefix + TOPICS.sys;
+        const sysTopic = pair.prefix + REMOTE_REPL_TOPICS.sys;
         const wire = await observer.watch([sysTopic]);
         try {
           const { owner, peer } = pair;
@@ -123,7 +123,7 @@ describe.each(transports)('NestJS <-> Express over $name', (transport: Transport
 
           const sys = wire
             .filter((m) => m.startsWith(`${sysTopic} `))
-            .map((m) => JSON.parse(m.slice(sysTopic.length + 1)) as SysMessage)
+            .map((m) => JSON.parse(m.slice(sysTopic.length + 1)) as RemoteReplSysMessage)
             .filter((m) => m.channel === channel);
           const claims = sys.filter((m) => m.kind === 'claim');
           expect(claims.length).toBeGreaterThanOrEqual(2); // initial claim + >= 1 heartbeat

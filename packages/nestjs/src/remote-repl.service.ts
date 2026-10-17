@@ -3,18 +3,18 @@ import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import {
   RemoteReplEngine,
-  ReplDisabledError,
-  type ContextFactory,
-  type WebReplAdapter,
-  type WebReplEvent,
+  RemoteReplDisabledError,
+  type RemoteReplContextFactory,
+  type RemoteReplTransport,
+  type RemoteReplEvent,
 } from '@remote-repl/core';
-import { WEB_REPL_ADAPTER, WEB_REPL_OPTIONS, WEB_REPL_CLOCK, WEB_REPL_CONTEXT_FACTORY } from './constants';
-import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
+import { REMOTE_REPL_TRANSPORT, REMOTE_REPL_OPTIONS, REMOTE_REPL_CLOCK, REMOTE_REPL_CONTEXT_FACTORY } from './constants';
+import type { RemoteReplModuleOptions } from './interfaces/remote-repl-options.interface';
 
 /**
  * The NestJS face of `@remote-repl/core`'s `RemoteReplEngine`: DI
  * construction, lifecycle hooks delegating to `start()`/`stop()`, the
- * core `ReplDisabledError` mapped to Nest's `NotFoundException`, and an
+ * core `RemoteReplDisabledError` mapped to Nest's `NotFoundException`, and an
  * RxJS `Observable` view of a channel stream for the controller.
  *
  * All engine behaviour (ownership lease, serialization, replay, GC,
@@ -22,14 +22,14 @@ import type { WebReplModuleOptions } from './interfaces/web-repl-options.interfa
  * `packages/core/src/engine/remote-repl-engine.ts`.
  */
 @Injectable()
-export class WebReplService extends RemoteReplEngine implements OnModuleInit, OnModuleDestroy {
+export class RemoteReplService extends RemoteReplEngine implements OnModuleInit, OnModuleDestroy {
   constructor(
-    @Inject(WEB_REPL_OPTIONS) options: WebReplModuleOptions,
-    @Inject(WEB_REPL_ADAPTER) adapter: WebReplAdapter,
-    @Inject(WEB_REPL_CONTEXT_FACTORY) buildContext: ContextFactory,
-    @Inject(WEB_REPL_CLOCK) clock: () => number = () => Date.now(),
+    @Inject(REMOTE_REPL_OPTIONS) options: RemoteReplModuleOptions,
+    @Inject(REMOTE_REPL_TRANSPORT) transport: RemoteReplTransport,
+    @Inject(REMOTE_REPL_CONTEXT_FACTORY) buildContext: RemoteReplContextFactory,
+    @Inject(REMOTE_REPL_CLOCK) clock: () => number = () => Date.now(),
   ) {
-    super(options, adapter, buildContext, clock, new Logger('WebReplService'));
+    super(options, transport, buildContext, clock, new Logger('RemoteReplService'));
   }
 
   onModuleInit(): Promise<void> {
@@ -54,14 +54,14 @@ export class WebReplService extends RemoteReplEngine implements OnModuleInit, On
    * not when the controller calls this), unsubscribing closes it
    * synchronously. Throws `NotFoundException` synchronously when disabled.
    */
-  stream(channel: string, lastEventId: number | null): Observable<WebReplEvent> {
+  stream(channel: string, lastEventId: number | null): Observable<RemoteReplEvent> {
     try {
       // Surface the disabled state before handing back an Observable.
       this.assertEnabled();
     } catch (err) {
       throw toNestError(err);
     }
-    return new Observable<WebReplEvent>((subscriber) => {
+    return new Observable<RemoteReplEvent>((subscriber) => {
       const sub = this.openStream(channel, lastEventId, {
         next: (event) => subscriber.next(event),
         complete: () => subscriber.complete(),
@@ -72,5 +72,5 @@ export class WebReplService extends RemoteReplEngine implements OnModuleInit, On
 }
 
 function toNestError(err: unknown): unknown {
-  return err instanceof ReplDisabledError ? new NotFoundException() : err;
+  return err instanceof RemoteReplDisabledError ? new NotFoundException() : err;
 }

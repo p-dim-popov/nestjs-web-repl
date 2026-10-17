@@ -46,13 +46,14 @@ _Avoid_: sender, source
 The pub/sub medium that carries protocol messages between the instances of a
 cluster: in-memory for one process, Redis for many. A transport moves opaque
 strings and never parses them.
-_Avoid_: adapter (the historical name, kept only in type names such as
-`WebReplAdapter`), bus, broker
+_Avoid_: adapter (the historical name; `nestjs-web-repl` keeps it only in its
+deprecated aliases), bus, broker
 
-**Framework adapter**:
+**Framework package**:
 The package that wires the engine to one web framework's HTTP routes, for
-example the NestJS or Express adapter. It does HTTP wiring only.
-_Avoid_: integration, plugin, binding
+example the NestJS or Express package. It does HTTP wiring only.
+_Avoid_: adapter (the historical name; it now means nothing in this product),
+integration, plugin, binding
 
 **Shared handler layer**:
 The framework-free route logic in the core that every framework adapter calls:

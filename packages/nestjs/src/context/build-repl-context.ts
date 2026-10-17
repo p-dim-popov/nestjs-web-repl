@@ -3,7 +3,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 // Deep imports: neither of these is re-exported from @nestjs/core's public
 // entrypoint (only the `repl()` bootstrap function is public). Both are
 // pinned by this package's `@nestjs/core` peerDependency range and
-// exercised end-to-end by src/web-repl.module.spec.ts; if a future
+// exercised end-to-end by src/remote-repl.module.spec.ts; if a future
 // @nestjs/core major relocates them, this is the one file to fix.
 import { NestApplicationContext } from '@nestjs/core/nest-application-context';
 import { ReplContext } from '@nestjs/core/repl/repl-context';
@@ -22,7 +22,7 @@ import type { NestContainer } from '@nestjs/core/injector/container';
  * `get()`/`resolve()` default to `strict: true` (host-module-only lookup)
  * and it has no `select()` at all -- so `get(SomeService)` would silently
  * fail to resolve providers registered in modules other than the one that
- * hosts WebReplModule, which is exactly the common case for a REPL wired
+ * hosts RemoteReplModule, which is exactly the common case for a REPL wired
  * in from a shared library module.
  *
  * Instead we pull the process-wide `NestContainer` off the injected
@@ -33,7 +33,7 @@ import type { NestContainer } from '@nestjs/core/injector/container';
  * `NestFactory.createApplicationContext`/`NestApplication` build `app`
  * from. That gives the REPL the same app-wide, non-strict
  * `get`/`resolve`/`select` behavior a real `nest start --entrypoint repl`
- * REPL has, regardless of which module happens to host WebReplModule.
+ * REPL has, regardless of which module happens to host RemoteReplModule.
  */
 export function buildReplContext(moduleRef: ModuleRef): Record<string, unknown> {
   const container = (moduleRef as unknown as { container: NestContainer }).container;

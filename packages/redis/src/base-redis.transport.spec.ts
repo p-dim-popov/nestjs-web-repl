@@ -1,6 +1,6 @@
-import { BaseRedisWebReplAdapter } from './base-redis-web-repl.adapter';
+import { RemoteReplBaseRedisTransport } from './base-redis.transport';
 
-class FakeBase extends BaseRedisWebReplAdapter {
+class FakeBase extends RemoteReplBaseRedisTransport {
   publishes: Array<[string, string]> = [];
   subscribeCalls: string[] = [];
   teardowns = 0;
@@ -18,7 +18,7 @@ class FakeBase extends BaseRedisWebReplAdapter {
   }
 }
 
-describe('BaseRedisWebReplAdapter', () => {
+describe('RemoteReplBaseRedisTransport', () => {
   it('delivers a dispatched message to a registered handler', async () => {
     const a = new FakeBase();
     const got: string[] = [];
@@ -55,11 +55,11 @@ describe('BaseRedisWebReplAdapter', () => {
     expect(a.publishes).toEqual([['remote-repl:cmd', 'x']]);
   });
 
-  it('tears down and clears state on onModuleDestroy', async () => {
+  it('tears down and clears state on close', async () => {
     const a = new FakeBase();
     const got: string[] = [];
     await a.subscribe('remote-repl:cmd', (m) => got.push(m));
-    await a.onModuleDestroy();
+    await a.close();
     expect(a.teardowns).toBe(1);
     a.emit('remote-repl:cmd', 'after');
     expect(got).toEqual([]);

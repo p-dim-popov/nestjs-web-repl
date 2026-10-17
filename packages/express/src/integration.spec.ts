@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
-import { InMemoryWebReplAdapter, RemoteReplEngine } from '@remote-repl/core';
-import { createReplEngine, createReplRouter } from './index';
+import { RemoteReplInMemoryTransport, RemoteReplEngine } from '@remote-repl/core';
+import { createRemoteReplEngine, createRemoteReplRouter } from './index';
 
 // Real app, real engine, in-memory transport: the Express HTTP seam
 // end-to-end (the spec's "HTTP seams" testing decision).
@@ -20,20 +20,20 @@ async function readUntilDone(url: string, signal: AbortSignal): Promise<string> 
   return text;
 }
 
-describe('createReplEngine + createReplRouter on a real Express app', () => {
+describe('createRemoteReplEngine + createRemoteReplRouter on a real Express app', () => {
   let engine: RemoteReplEngine;
   let server: ReturnType<ReturnType<typeof express>['listen']>;
   let base: string;
 
   beforeAll(async () => {
-    engine = createReplEngine({
+    engine = createRemoteReplEngine({
       options: { enabled: true, heartbeatInterval: 60_000 },
-      transport: new InMemoryWebReplAdapter(),
+      transport: new RemoteReplInMemoryTransport(),
       context: { answer: 42 },
     });
     await engine.start();
     const app = express();
-    app.use('/repl', createReplRouter({ engine }));
+    app.use('/repl', createRemoteReplRouter({ engine }));
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   });
@@ -63,10 +63,23 @@ describe('createReplEngine + createReplRouter on a real Express app', () => {
     expect(text).toContain('43');
   }, 15_000);
 
+  it('defaults to the in-memory transport when none is given (single instance)', async () => {
+    const solo = createRemoteReplEngine({ options: { enabled: true }, context: { marker: 'solo-ok' } });
+    await solo.start();
+    const iter = solo.events('solo', null);
+    await solo.dispatch('solo', 'marker');
+    const first = await iter.next();
+    const second = await iter.next();
+    await iter.return?.(undefined);
+    expect(first.value.type).toBe('command');
+    expect(String(second.value.data)).toContain('solo-ok');
+    await solo.stop();
+  });
+
   it('accepts a buildContext callback instead of a context object', async () => {
-    const built = createReplEngine({
+    const built = createRemoteReplEngine({
       options: { enabled: true },
-      transport: new InMemoryWebReplAdapter(),
+      transport: new RemoteReplInMemoryTransport(),
       buildContext: () => ({ fromBuilder: true }),
     });
     expect(built).toBeInstanceOf(RemoteReplEngine);
@@ -76,14 +89,14 @@ describe('createReplEngine + createReplRouter on a real Express app', () => {
 
 describe('a disabled engine', () => {
   it('subscribes to nothing on start() and the router 404s every route', async () => {
-    const transport = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     const subscribe = vi.spyOn(transport, 'subscribe');
-    const engine = createReplEngine({ options: { enabled: false }, transport, context: {} });
+    const engine = createRemoteReplEngine({ options: { enabled: false }, transport, context: {} });
     await engine.start();
     expect(subscribe).not.toHaveBeenCalled();
 
     const app = express();
-    app.use('/repl', createReplRouter({ engine }));
+    app.use('/repl', createRemoteReplRouter({ engine }));
     expect((await request(app).get('/repl')).status).toBe(404);
     expect((await request(app).post('/repl/x').send({ command: '1' })).status).toBe(404);
     expect((await request(app).get('/repl/x').set('Accept', 'text/event-stream')).status).toBe(404);
@@ -104,7 +117,7 @@ describe('user middleware in front of the router', () => {
       next();
     };
     const app = express();
-    app.use('/repl', requireToken, createReplRouter({ engine }));
+    app.use('/repl', requireToken, createRemoteReplRouter({ engine }));
 
     for (const path of ['/repl', '/repl/x/ui', '/repl/x/vs/loader.js']) {
       expect((await request(app).get(path)).status).toBe(401);

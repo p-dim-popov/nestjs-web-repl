@@ -1,6 +1,6 @@
 import type express5 from 'express';
 import request from 'supertest';
-import type { createReplRouter as createReplRouterFn } from '../src/repl-router';
+import type { createRemoteReplRouter as createRemoteReplRouterFn } from '../src/repl-router';
 
 /**
  * The router's HTTP contract, run once per supported Express major. The
@@ -12,7 +12,7 @@ import type { createReplRouter as createReplRouterFn } from '../src/repl-router'
 export function describeReplRouter(
   label: string,
   express: typeof express5,
-  createReplRouter: typeof createReplRouterFn,
+  createRemoteReplRouter: typeof createRemoteReplRouterFn,
   major: 4 | 5,
 ): void {
   // The router reads `enabled` from the engine itself: there is no separate
@@ -25,11 +25,11 @@ export function describeReplRouter(
 
   function mount(engine: ReturnType<typeof fakeEngine>) {
     const app = express();
-    app.use('/repl', createReplRouter({ engine }));
+    app.use('/repl', createRemoteReplRouter({ engine }));
     return app;
   }
 
-  describe(`${label}: createReplRouter: enabled comes from the engine`, () => {
+  describe(`${label}: createRemoteReplRouter: enabled comes from the engine`, () => {
     it('404s every route when the engine is disabled, with no other option involved', async () => {
       const engine = fakeEngine(false);
       const app = mount(engine);
@@ -52,7 +52,7 @@ export function describeReplRouter(
     });
   });
 
-  describe(`${label}: createReplRouter: POST /:channel`, () => {
+  describe(`${label}: createRemoteReplRouter: POST /:channel`, () => {
     it('accepts a command with 202 and returns commandId', async () => {
       const engine = fakeEngine();
       const res = await request(mount(engine)).post('/repl/chanA').send({ command: '1+1' });
@@ -62,7 +62,7 @@ export function describeReplRouter(
     });
   });
 
-  describe(`${label}: createReplRouter: POST /:channel rejects bad bodies`, () => {
+  describe(`${label}: createRemoteReplRouter: POST /:channel rejects bad bodies`, () => {
     it.each([
       ['a missing command', {}],
       ['a whitespace-only command', { command: '   ' }],
@@ -83,7 +83,7 @@ export function describeReplRouter(
     });
   });
 
-  describe(`${label}: createReplRouter: GET / (landing)`, () => {
+  describe(`${label}: createRemoteReplRouter: GET / (landing)`, () => {
     it('redirects to a random channel UI under the MOUNT path (no base-path option)', async () => {
       const res = await request(mount(fakeEngine())).get('/repl');
       expect(res.status).toBe(302);
@@ -92,7 +92,7 @@ export function describeReplRouter(
 
     it('uses whatever path the user mounted at as the base', async () => {
       const app = express();
-      app.use('/internal/debug/repl', createReplRouter({ engine: fakeEngine() }));
+      app.use('/internal/debug/repl', createRemoteReplRouter({ engine: fakeEngine() }));
       const res = await request(app).get('/internal/debug/repl');
       expect(res.headers.location).toMatch(/^\/internal\/debug\/repl\/[a-z0-9]{8}\/ui$/);
     });
@@ -110,7 +110,7 @@ export function describeReplRouter(
     });
   });
 
-  describe(`${label}: createReplRouter: GET /:channel/ui and /:channel/vs/*`, () => {
+  describe(`${label}: createRemoteReplRouter: GET /:channel/ui and /:channel/vs/*`, () => {
     it('serves an HTML page mentioning the channel and Monaco', async () => {
       const res = await request(mount(fakeEngine())).get('/repl/chanA/ui');
       expect(res.status).toBe(200);
@@ -157,7 +157,7 @@ export function describeReplRouter(
   });
 
   // An async iterator over a fixed list that reports whether return() was
-  // called, so the disconnect-cleanup contract (the adapter MUST call
+  // called, so the disconnect-cleanup contract (the transport MUST call
   // return() on close) is observable at the HTTP seam.
   function finiteEvents(events: unknown[]) {
     const state = { returned: false };
@@ -171,7 +171,7 @@ export function describeReplRouter(
     return { iterator: gen(), state };
   }
 
-  describe(`${label}: createReplRouter: GET /:channel (SSE)`, () => {
+  describe(`${label}: createRemoteReplRouter: GET /:channel (SSE)`, () => {
     it('writes event-stream headers and frames; heartbeats repeat the last real event id', async () => {
       const engine = fakeEngine();
       const { iterator } = finiteEvents([

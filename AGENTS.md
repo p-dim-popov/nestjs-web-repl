@@ -10,11 +10,11 @@ The `@remote-repl` package family exposes a live, in-process REPL over HTTP: a
 `POST` command endpoint, an SSE output stream, and a Monaco-based browser UI,
 backed by real `node:repl` sessions running inside the host app. One
 framework-free engine (`@remote-repl/core`) speaks one wire protocol
-(`packages/core/PROTOCOL.md`); framework adapters (`@remote-repl/nestjs`,
+(`packages/core/PROTOCOL.md`); framework packages (`@remote-repl/nestjs`,
 `@remote-repl/express`) do the HTTP wiring; transports (`@remote-repl/redis`)
 carry the protocol between instances; the legacy `nestjs-web-repl` name is a
 re-export shim. The shared vocabulary (engine, channel, transport, framework
-adapter, lease, claim/release, topic prefix, shim, …) is defined in
+transport, lease, claim/release, topic prefix, shim, …) is defined in
 `GLOSSARY.md`; the hard-to-reverse decisions behind the split are in
 `docs/adr/`. Use the glossary's terms in code, tests and issues.
 **The endpoints execute arbitrary code by design.** Treat every change through
@@ -138,7 +138,7 @@ change or that spec goes red. Packages live under `packages/`:
     transport pub/sub, channel ownership (a heartbeat-renewed lease — see
     "Owner-liveness lease" below), per-channel serialized execution, output
     fan-out, replay, TTL + channel GC, the client-visible `{ping}` heartbeat,
-    runtime `enabled` enforcement (`ReplDisabledError`). A plain class (no
+    runtime `enabled` enforcement (`RemoteReplDisabledError`). A plain class (no
     decorators, no rxjs): constructor `(options, transport, buildContext,
     clock, logger)`, `start()`/`stop()`, `dispatch()`, `openStream()` (the
     synchronous subscribe/close primitive) and `events()` (an async iterator
@@ -146,12 +146,12 @@ change or that spec goes red. Packages live under `packages/`:
     injected clock.
   - `src/session/repl-session.ts` — one `node:repl` server per channel; the
     subtlest file in the repo (see "Gotchas").
-  - `src/protocol/` — the wire protocol: `messages.ts` (`CmdMessage`,
-    `OutMessage`, `SysMessage`, the `SseEvent`/`TransportEvent` discriminated
-    unions and the loose `WebReplEvent` the engine still works with),
-    `transport.ts` (the `WebReplAdapter` transport interface; its optional
+  - `src/protocol/` — the wire protocol: `messages.ts` (`RemoteReplCmdMessage`,
+    `RemoteReplOutMessage`, `RemoteReplSysMessage`, the `RemoteReplSseEvent`/`RemoteReplTransportEvent` discriminated
+    unions and the loose `RemoteReplEvent` the engine still works with),
+    `transport.ts` (the `RemoteReplTransport` transport interface; its optional
     `onModuleDestroy?` hook keeps that name for compatibility), `constants.ts`
-    (`TOPICS`, `DEFAULTS`), `options.ts` (`WebReplOptions`, the framework-free
+    (`REMOTE_REPL_TOPICS`, `REMOTE_REPL_DEFAULTS`), `options.ts` (`RemoteReplOptions`, the framework-free
     options shape).
   - `PROTOCOL.md` — the versioned, language-neutral protocol spec (topics,
     message shapes, ownership/lease semantics, SSE contract, versioning
@@ -162,7 +162,7 @@ change or that spec goes red. Packages live under `packages/`:
     update PROTOCOL.md's prose and bump its version (additive = minor,
     breaking = major).
   - `src/ring-buffer.ts` — `EventRingBuffer`, the per-channel SSE replay buffer.
-  - `src/transport/in-memory.transport.ts` — `InMemoryWebReplAdapter`.
+  - `src/transport/in-memory.transport.ts` — `RemoteReplInMemoryTransport`.
   - `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
     `src/ui/monaco-assets.ts` serves `dist/ui/vs` (built) or falls back to the
     `monaco-editor` devDependency through Node's resolver (hoisted to the root
@@ -170,71 +170,71 @@ change or that spec goes red. Packages live under `packages/`:
     `require.resolve` are guarded, see "Runtime support"); it is also the
     sole path-traversal guard for the asset route.
   - `src/http/` — the framework-free HTTP layer. `handlers.ts` is the
-    shared route-handler layer every framework adapter wires to:
-    `createReplHandlers(engine, { enabled })` returns plain-data handlers —
+    shared route-handler layer every framework package wires to:
+    `createRemoteReplHandlers(engine, { enabled })` returns plain-data handlers —
     `landing(requestUrl) → redirectUrl`, `post(channel, body) →
     Promise<{commandId}>`, `streamFrames(channel, lastEventId) →
-    AsyncIterableIterator<SseFrame>` (owns the heartbeat id-stamping; for
+    AsyncIterableIterator<RemoteReplSseFrame>` (owns the heartbeat id-stamping; for
     SSE layers that take `{id,type,data}` objects, e.g. Nest's
     `MessageEvent`), `stream(channel, lastEventId) →
     AsyncIterableIterator<string>` (`sseFrameToText` over `streamFrames`:
     ready-to-send SSE text frames), `ui(channel) → html`,
-    `asset(relativePath) → MonacoAsset | null`. Both stream variants open
-    the engine stream eagerly and the adapter MUST call `return()` on
+    `asset(relativePath) → RemoteReplAsset | null`. Both stream variants open
+    the engine stream eagerly and the transport MUST call `return()` on
     disconnect — that is what closes the engine subscription. The `engine`
     argument is structural: `{ dispatch, events }`. Error contract: every
-    handler throws `ReplDisabledError` when disabled (synchronously, except
+    handler throws `RemoteReplDisabledError` when disabled (synchronously, except
     `post`, which is always async and rejects — also with
-    `InvalidCommandError` for a bad body → 400). Adapters map errors to
-    status codes and use `SSE_RESPONSE_HEADERS` + `SSE_STREAM_PREAMBLE` and
-    `parseLastEventId(header)` so the wire format matches the reference
-    exactly. Route logic belongs here, never in an adapter. Pure helpers:
-    `sse-frame.ts` (`toSseFrame` → a plain `SseFrame {id,type,data}`,
+    `RemoteReplInvalidCommandError` for a bad body → 400). Framework packages map errors to
+    status codes and use `REMOTE_REPL_SSE_RESPONSE_HEADERS` + `REMOTE_REPL_SSE_STREAM_PREAMBLE` and
+    `parseRemoteReplLastEventId(header)` so the wire format matches the reference
+    exactly. Route logic belongs here, never in a framework package. Pure helpers:
+    `sse-frame.ts` (`toSseFrame` → a plain `RemoteReplSseFrame {id,type,data}`,
     heartbeat id stamping; `sseFrameToText` → wire text) and `landing.ts`
     (`randomChannelName`, `landingRedirectUrl`). `src/package-boundary.spec.ts`
     also greps core's sources for `@nestjs/*`, express or rxjs imports.
   - `scripts/copy-monaco.mjs` — build step. Finds `monaco-editor` through
     Node's resolver (`createRequire`), never a hardcoded `node_modules` path.
 - `packages/redis/` — `@remote-repl/redis`: the Redis transports. Depends on `@remote-repl/core`
-  (the `WebReplAdapter` interface) and nothing else; `ioredis` and `redis` are
+  (the `RemoteReplTransport` interface) and nothing else; `ioredis` and `redis` are
   OPTIONAL peers (pinned by `src/package-boundary.spec.ts`, which also
   forbids `@nestjs/*`, express, rxjs). No decorators, no swc, no
   `reflect-metadata`. Paths relative to it:
-  - `src/base-redis-web-repl.adapter.ts` — `BaseRedisWebReplAdapter`: handler
+  - `src/base-redis.transport.ts` — `RemoteReplBaseRedisTransport`: handler
     fan-out, subscribe once per topic, handler-fault isolation (a throwing
     handler never escapes into the client's emitter nor skips other
-    handlers), and the topic `prefix`. `RedisWebReplAdapterOptions` =
+    handlers), and the topic `prefix`. `RemoteReplRedisTransportOptions` =
     `{ prefix?, logger? }`; `logger` is any `{ warn, error }` (a Nest
     `Logger`, pino, …), default `console` — this package has no framework
     logger. The prefix is prepended verbatim to WIRE topic names and stripped
     before dispatch; with no prefix the names are byte-identical to the
-    engine's `TOPICS`. The prefix belongs to the shared medium, NOT the
+    engine's `REMOTE_REPL_TOPICS`. The prefix belongs to the shared medium, NOT the
     engine: the in-memory transport takes none.
-  - `src/ioredis-web-repl.adapter.ts`, `src/node-redis-web-repl.adapter.ts` —
+  - `src/ioredis.transport.ts`, `src/node-redis.transport.ts` —
     the two clients, each behind a structural `*Like` interface (no client
     import at runtime). `test/fakes/fake-node-redis.ts` — the node-redis fake
     used by the unit spec; the ioredis spec uses `ioredis-mock`.
-- `packages/express/` — `@remote-repl/express`: the Express adapter, thin wiring of core's
-  `createReplHandlers` onto an Express `Router`. Depends on `@remote-repl/core`
+- `packages/express/` — `@remote-repl/express`: the Express package, thin wiring of core's
+  `createRemoteReplHandlers` onto an Express `Router`. Depends on `@remote-repl/core`
   and nothing else; `express` (`^4.16 || ^5`) is a PEER (pinned by
   `src/package-boundary.spec.ts`, which also forbids `@nestjs/*`, rxjs, redis
   clients). No decorators, no swc, no `reflect-metadata`. Paths relative to it:
-  - `src/repl-router.ts` — `createReplRouter({ engine })`; the router reads
+  - `src/repl-router.ts` — `createRemoteReplRouter({ engine })`; the router reads
     `enabled` from `engine.enabled` (a read-only getter on `RemoteReplEngine`),
     so there is no second flag to drift. The user
     mounts it (`app.use('/repl', router)`) and the MOUNT PATH IS THE BASE PATH
     (landing redirects via `req.originalUrl`; there is no base-path option).
     Routes: `GET /` landing 302, `POST /:channel` 202 (JSON parsing scoped to
-    this route; `InvalidCommandError` → 400 with the handler's message),
-    `GET /:channel` SSE (`SSE_RESPONSE_HEADERS`, `SSE_STREAM_PREAMBLE`, then
+    this route; `RemoteReplInvalidCommandError` → 400 with the handler's message),
+    `GET /:channel` SSE (`REMOTE_REPL_SSE_RESPONSE_HEADERS`, `REMOTE_REPL_SSE_STREAM_PREAMBLE`, then
     the handler's frames verbatim; `return()` on `res` `close`), `GET
     /:channel/ui`, and the Monaco assets as a RegExp route
     (`/^\/([^/]+)\/vs\/(.+)$/`, `req.params[1]`) so the same code works on
     Express 4 (`*` → `params[0]`) and 5 (`*path` → `string[]`).
-    `ReplDisabledError` → 404 on every route; errors are caught explicitly
+    `RemoteReplDisabledError` → 404 on every route; errors are caught explicitly
     (no reliance on Express 5 promise forwarding). The user's auth middleware
     goes in front of the router; none is shipped.
-  - `src/repl-engine.ts` — `createReplEngine({ options, transport, context |
+  - `src/repl-engine.ts` — `createRemoteReplEngine({ options, transport, context |
     buildContext, logger? })`: builds a `RemoteReplEngine` for an app with no
     DI. The caller owns `start()` / `stop()`; `start()` is a no-op when
     disabled (subscribes to nothing).
@@ -258,8 +258,8 @@ change or that spec goes red. Packages live under `packages/`:
   below; nothing in this package imports it (the example and tests import
   `../src`; `examples/stackblitz/` targets the published package). Depends
   on `@remote-repl/core` and re-exports what its public API needs
-  (`InMemoryWebReplAdapter`, `WebReplAdapter`, `WebReplEvent`,
-  `SseEventType`), so `import { WebReplModule } from 'nestjs-web-repl'`
+  (`RemoteReplInMemoryTransport`, `RemoteReplTransport`, `RemoteReplEvent`,
+  `RemoteReplSseEventType`), so `import { RemoteReplModule } from 'nestjs-web-repl'`
   keeps working through the shim. It exports ONLY its own API: no `./redis`
   subpath, no `typesVersions`, no redis-client peers (`src/packaging.spec.ts`
   pins that, together with `files: ["dist"]`, the absence of a `bin` in every
@@ -267,20 +267,20 @@ change or that spec goes red. Packages live under `packages/`:
   only. rxjs is a peer of THIS package (the Observable adaptation lives
   here), never of
   core. Paths below are relative to it.
-  - `src/web-repl.service.ts` — `WebReplService extends RemoteReplEngine`:
+  - `src/remote-repl.service.ts` — `RemoteReplService extends RemoteReplEngine`:
     the thin Nest face of core's engine. DI construction (passes
-    `new Logger('WebReplService')`), `onModuleInit`/`onModuleDestroy` →
-    `start()`/`stop()`, `ReplDisabledError` → `NotFoundException` (a
+    `new Logger('RemoteReplService')`), `onModuleInit`/`onModuleDestroy` →
+    `start()`/`stop()`, `RemoteReplDisabledError` → `NotFoundException` (a
     rejection from `dispatch()`, a synchronous throw from `stream()`), and
     `stream()` as an RxJS `Observable` over the engine's `openStream()`
     (kept for consumers and its spec; the controller consumes `events()`
-    through the shared handlers instead). No engine logic lives here. `src/web-repl.service.spec.ts` is the
+    through the shared handlers instead). No engine logic lives here. `src/remote-repl.service.spec.ts` is the
     behaviour-preservation gate for the engine extraction: it reaches
     engine internals by name (`channels`, `ownership`, `onCmd`, …), so the
     engine's members stay plain TS `private`, never `#private`.
-  - `src/web-repl.controller.ts` — thin HTTP wiring over core's
-    `createReplHandlers(service, options)`: Nest params in, core errors out
-    (`ReplDisabledError` → `NotFoundException`, `InvalidCommandError` →
+  - `src/remote-repl.controller.ts` — thin HTTP wiring over core's
+    `createRemoteReplHandlers(service, options)`: Nest params in, core errors out
+    (`RemoteReplDisabledError` → `NotFoundException`, `RemoteReplInvalidCommandError` →
     `BadRequestException(message)`). No route logic lives here. The SSE
     route adapts `handlers.streamFrames()`'s async iterator to the
     `Observable<MessageEvent>` that `@Sse()` expects (unsubscribe →
@@ -289,15 +289,15 @@ change or that spec goes red. Packages live under `packages/`:
     the handlers reading the shared options object on every call — keep
     passing `options` itself, not a copy. Its spec mocks the service as
     `{ dispatch, events }` (the handler engine surface), not `stream()`.
-  - `src/web-repl.module.ts` + `src/web-repl.module-definition.ts` — `register` /
+  - `src/remote-repl.module.ts` + `src/remote-repl.module-definition.ts` — `register` /
     `registerAsync` (ConfigurableModuleBuilder).
   - `src/context/build-repl-context.ts` — builds the app-wide REPL context.
     Isolates two fragile `@nestjs/core` deep imports (see "Gotchas").
-  - `src/interfaces/web-repl-options.interface.ts` — `WebReplModuleOptions`
-    (extends core's `WebReplOptions`), `WebReplAdapterConfig`,
-    `WebReplModuleExtras`. `src/constants.ts` — the Nest DI tokens only.
+  - `src/interfaces/remote-repl-options.interface.ts` — `RemoteReplModuleOptions`
+    (extends core's `RemoteReplOptions`), `RemoteReplTransportConfig`,
+    `RemoteReplModuleExtras`. `src/constants.ts` — the Nest DI tokens only.
   - `example/` — a runnable host app. `test/` — the two-instance e2e (in-memory
-    adapter) and `test/contract/` — the contract suite: two real Nest
+    transport) and `test/contract/` — the contract suite: two real Nest
     instances on a REAL Redis (`REDIS_URL`, default `redis://127.0.0.1:6379`),
     every scenario run once per transport from `@remote-repl/redis`. It pins
     the observable multi-instance behavior (ownership, lease takeover, SSE
@@ -329,7 +329,7 @@ change or that spec goes red. Packages live under `packages/`:
   `enabled` through the shim. No `bin` (see `CHANGELOG.md`; skills install
   via skills.sh, see `skills/` below).
 - `skills/` — the consumer-facing Claude Code skills (distinct from this
-  AGENTS.md, which is for contributors), one directory per framework adapter,
+  AGENTS.md, which is for contributors), one directory per framework package,
   each a single `SKILL.md` with `name` + `description` frontmatter:
   `skills/nestjs-web-repl/` (`@remote-repl/nestjs` and the shim; frontmatter
   `name: nestjs-web-repl` is the identity skills.sh keys on, keep it) and
@@ -376,21 +376,21 @@ change or that spec goes red. Packages live under `packages/`:
 
 1. **`enabled` is enforced at runtime**, not just at registration, and at
    EVERY layer: the engine (`start()` subscribes to nothing and `dispatch()`
-   / `events()` / `openStream()` throw `ReplDisabledError` when disabled), the
+   / `events()` / `openStream()` throw `RemoteReplDisabledError` when disabled), the
    shared handler layer (every handler reads the live options object on each
-   call and throws `ReplDisabledError`), and every framework adapter (maps
-   `ReplDisabledError` to its own 404 — via both `register` and
-   `registerAsync` in NestJS, via `createReplRouter` in Express). A new
-   framework adapter MUST replicate the 404 mapping on all five routes and
+   call and throws `RemoteReplDisabledError`), and every framework package (maps
+   `RemoteReplDisabledError` to its own 404 — via both `register` and
+   `registerAsync` in NestJS, via `createRemoteReplRouter` in Express). A new
+   framework package MUST replicate the 404 mapping on all five routes and
    MUST pass the engine the same `enabled` value; the e2e/HTTP suites of each
-   adapter cover it. This is the product's only built-in safety rail;
+   transport cover it. This is the product's only built-in safety rail;
    treating it as advisory-only is a critical bug.
 2. **The UI escapes the channel name** for the `<script>` context (`<`
    escaping) and uses `encodeURIComponent` for URLs. SSE payloads render via
    `textContent`, never `innerHTML`. The escaping and the Monaco asset
-   path-traversal guard live once, in core (`src/ui/`), and every adapter
+   path-traversal guard live once, in core (`src/ui/`), and every transport
    serves the UI and the assets through the shared handlers — never
-   re-implement either in an adapter.
+   re-implement either in a framework package.
 3. The library ships **no authentication** — that is intentional and the user's
    responsibility. Do not add auth that pretends to be complete; do keep the
    security warnings in `README.md` accurate.
@@ -413,7 +413,7 @@ change or that spec goes red. Packages live under `packages/`:
   command; commands on a channel run serially. Don't reintroduce a shared
   cross-channel "current command" field.
 - **Two unrelated heartbeats, don't conflate them**: `heartbeatInterval` /
-  `DEFAULTS.heartbeatInterval` drives the client-visible SSE `{ping}` keep-alive
+  `REMOTE_REPL_DEFAULTS.heartbeatInterval` drives the client-visible SSE `{ping}` keep-alive
   started per subscriber in the engine's `openStream()`.
   `ownerHeartbeatInterval` / `ownerLeaseTtl` drive the internal
   owner-liveness lease (an instance re-announcing `claim` for channels it
@@ -427,10 +427,10 @@ Implemented in `packages/core/src/engine/remote-repl-engine.ts` (`onCmd`,
 `heartbeatOwnedChannels`, the constructor clamp). Ownership of a channel is a
 lease, not a permanent grant: the owning instance
 must re-announce `claim` every `ownerHeartbeatInterval` (the engine's
-injectable `clock` constructor argument — `WEB_REPL_CLOCK` in the Nest
+injectable `clock` constructor argument — `REMOTE_REPL_CLOCK` in the Nest
 package — drives `ownerSeenAt` timestamps so tests can control
 staleness deterministically — see `remote-repl-engine.spec.ts`'s
-`makeSharedClock` and `web-repl.service.spec.ts`'s `makeServiceWithClock`
+`makeSharedClock` and `remote-repl.service.spec.ts`'s `makeServiceWithClock`
 helpers). If no claim/heartbeat has been seen for a
 channel's recorded owner within `ownerLeaseTtl`, `onCmd` treats it as
 effectively ownerless and lets the ORIGIN instance of the next command for it
@@ -438,14 +438,14 @@ take over (fresh session; the dead owner's variables are gone). A live,
 heartbeating owner must NEVER be preempted this way — `ownerLeaseTtl` is
 clamped in the constructor to at least `ownerHeartbeatInterval * 2` (not just
 "greater than") specifically to guarantee that: a bare majority margin (e.g.
-lease = heartbeat + 1ms) leaves zero slack for publish/adapter delivery
+lease = heartbeat + 1ms) leaves zero slack for publish/transport delivery
 jitter measured on a PEER's clock, so a single heartbeat delivered late could
 make a live owner look stale to someone else and get preempted. The 2x
 margin guarantees a live owner always has at least one full heartbeat
 interval of slack. If you touch this
 logic, re-run the `owner-liveness` describe blocks of
 `packages/core/src/engine/remote-repl-engine.spec.ts` and
-`packages/nestjs/src/web-repl.service.spec.ts` a few times to confirm they
+`packages/nestjs/src/remote-repl.service.spec.ts` a few times to confirm they
 aren't flaky — staleness is all driven by the injected clock, not real
 waits, so they should never be.
 

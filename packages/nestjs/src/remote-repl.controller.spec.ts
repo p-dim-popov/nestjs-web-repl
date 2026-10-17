@@ -1,12 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication, BadRequestException } from '@nestjs/common';
 import request from 'supertest';
-import { WebReplController } from './web-repl.controller';
-import { WebReplService } from './web-repl.service';
-import { WEB_REPL_OPTIONS } from './constants';
+import { RemoteReplController } from './remote-repl.controller';
+import { RemoteReplService } from './remote-repl.service';
+import { REMOTE_REPL_OPTIONS } from './constants';
 import { renderReplUi } from '@remote-repl/core';
 
-describe('WebReplController', () => {
+describe('RemoteReplController', () => {
   let app: INestApplication;
   const svc = {
     dispatch: vi.fn(async () => ({ commandId: 'cmd_x' })),
@@ -15,10 +15,10 @@ describe('WebReplController', () => {
 
   beforeAll(async () => {
     const mod = await Test.createTestingModule({
-      controllers: [WebReplController],
+      controllers: [RemoteReplController],
       providers: [
-        { provide: WebReplService, useValue: svc },
-        { provide: WEB_REPL_OPTIONS, useValue: { enabled: true } },
+        { provide: RemoteReplService, useValue: svc },
+        { provide: REMOTE_REPL_OPTIONS, useValue: { enabled: true } },
       ],
     }).compile();
     app = mod.createNestApplication();
@@ -107,10 +107,10 @@ describe('WebReplController', () => {
 
     beforeAll(async () => {
       const mod = await Test.createTestingModule({
-        controllers: [WebReplController],
+        controllers: [RemoteReplController],
         providers: [
-          { provide: WebReplService, useValue: disabledSvc },
-          { provide: WEB_REPL_OPTIONS, useValue: { enabled: false } },
+          { provide: RemoteReplService, useValue: disabledSvc },
+          { provide: REMOTE_REPL_OPTIONS, useValue: { enabled: false } },
         ],
       }).compile();
       disabledApp = mod.createNestApplication();

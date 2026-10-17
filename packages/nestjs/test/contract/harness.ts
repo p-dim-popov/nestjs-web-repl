@@ -3,10 +3,10 @@ import express from 'express';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
-import { createReplEngine, createReplRouter } from '@remote-repl/express';
-import type { WebReplAdapter, WebReplEvent, WebReplOptions } from '@remote-repl/core';
-import { WebReplModule } from '../../src/web-repl.module';
-import type { WebReplModuleOptions } from '../../src/interfaces/web-repl-options.interface';
+import { createRemoteReplEngine, createRemoteReplRouter } from '@remote-repl/express';
+import type { RemoteReplTransport, RemoteReplEvent, RemoteReplOptions } from '@remote-repl/core';
+import { RemoteReplModule } from '../../src/remote-repl.module';
+import type { RemoteReplModuleOptions } from '../../src/interfaces/remote-repl-options.interface';
 import type { Transport } from './transports';
 
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
@@ -23,11 +23,11 @@ export interface Instance {
 }
 
 export const bootInstance = async (
-  adapter: WebReplAdapter,
-  options: Partial<WebReplModuleOptions> & { instanceId: string },
+  transport: RemoteReplTransport,
+  options: Partial<RemoteReplModuleOptions> & { instanceId: string },
 ): Promise<Instance> => {
   const mod = await Test.createTestingModule({
-    imports: [WebReplModule.register({ enabled: true, ...options, adapter })],
+    imports: [RemoteReplModule.register({ enabled: true, ...options, transport })],
   }).compile();
   const app = mod.createNestApplication({ logger: false });
   await app.init();
@@ -37,24 +37,24 @@ export const bootInstance = async (
 };
 
 /**
- * Same HTTP surface, hosted by a plain Express app: `createReplEngine` +
- * `createReplRouter` mounted at `/repl`, with a static context standing in
+ * Same HTTP surface, hosted by a plain Express app: `createRemoteReplEngine` +
+ * `createRemoteReplRouter` mounted at `/repl`, with a static context standing in
  * for the DI container.
  */
 export const bootExpressInstance = async (
-  adapter: WebReplAdapter,
-  options: Partial<WebReplOptions> & { instanceId: string },
+  transport: RemoteReplTransport,
+  options: Partial<RemoteReplOptions> & { instanceId: string },
 ): Promise<Instance> => {
   const enabled = options.enabled ?? true;
-  const engine = createReplEngine({
+  const engine = createRemoteReplEngine({
     options: { ...options, enabled },
-    transport: adapter,
+    transport,
     context: {},
     logger: { warn() {}, error() {} },
   });
   await engine.start();
   const app = express();
-  app.use('/repl', createReplRouter({ engine }));
+  app.use('/repl', createRemoteReplRouter({ engine }));
   const server = app.listen(0);
   await new Promise<void>((r) => server.once('listening', () => r()));
   const { port } = server.address() as AddressInfo;
@@ -87,8 +87,8 @@ const httpHandle = (server: http.Server): Pick<Instance, 'post' | 'get'> => ({
 export interface Framework {
   name: 'nestjs' | 'express';
   boot(
-    adapter: WebReplAdapter,
-    options: Partial<WebReplOptions> & { instanceId: string },
+    transport: RemoteReplTransport,
+    options: Partial<RemoteReplOptions> & { instanceId: string },
   ): Promise<Instance>;
 }
 
@@ -103,7 +103,7 @@ export const frameworkNamed = (name: Framework['name']): Framework =>
 /** One SSE frame as it arrived on the wire: the `id:` line plus the parsed `data:` JSON. */
 export interface Frame {
   wireId: string | null;
-  event: WebReplEvent;
+  event: RemoteReplEvent;
 }
 
 export interface SseClient {
@@ -123,7 +123,7 @@ const parseFrame = (raw: string): Frame | null => {
     else if (line.startsWith('data:')) data = (data ?? '') + line.slice(5).trim();
   }
   if (data === null) return null;
-  return { wireId, event: JSON.parse(data) as WebReplEvent };
+  return { wireId, event: JSON.parse(data) as RemoteReplEvent };
 };
 
 export const openSse = (
@@ -229,7 +229,7 @@ export interface Pair {
 }
 
 export interface PairSpec {
-  options?: Partial<WebReplOptions>;
+  options?: Partial<RemoteReplOptions>;
   /** The framework hosting A and the one hosting B; default both NestJS. */
   hosts?: [Framework, Framework];
   instanceIds?: [string, string];
@@ -238,9 +238,9 @@ export interface PairSpec {
 }
 
 /**
- * Boots instances A and B on fresh adapters of `transport` (one per instance),
+ * Boots instances A and B on fresh transports of `transport` (one per instance),
  * both under the same topic prefix. `closeAll` stops the apps, then quits the
- * adapters' publisher clients.
+ * transports' publisher clients.
  */
 export const bootPair = async (
   transport: Transport,
@@ -249,8 +249,8 @@ export const bootPair = async (
   const [hostA, hostB] = hosts ?? [frameworkNamed('nestjs'), frameworkNamed('nestjs')];
   const ta = await transport.make({ prefix });
   const tb = await transport.make({ prefix });
-  const a = await hostA.boot(ta.adapter, { instanceId: instanceIds[0], ...options });
-  const b = await hostB.boot(tb.adapter, { instanceId: instanceIds[1], ...options });
+  const a = await hostA.boot(ta.transport, { instanceId: instanceIds[0], ...options });
+  const b = await hostB.boot(tb.transport, { instanceId: instanceIds[1], ...options });
   return {
     a,
     b,

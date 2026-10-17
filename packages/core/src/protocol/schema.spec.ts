@@ -33,7 +33,7 @@ describe('protocol JSON Schema (schema/protocol.schema.json)', () => {
     ).toBe(false);
   });
 
-  // Exactly what the engine emits (web-repl.service.ts emit/executeCommand,
+  // Exactly what the engine emits (remote-repl-engine.ts emit/executeCommand,
   // onCmd's catch branch, and stream()'s heartbeat).
   const commandEvent = {
     id: 1,

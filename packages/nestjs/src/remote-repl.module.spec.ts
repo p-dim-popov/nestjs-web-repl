@@ -11,12 +11,12 @@ import { Test } from '@nestjs/testing';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
-import { WebReplModule } from './web-repl.module';
-import { WebReplController } from './web-repl.controller';
-import { WebReplService } from './web-repl.service';
-import { WEB_REPL_ADAPTER } from './constants';
-import { InMemoryWebReplAdapter } from '@remote-repl/core';
-import type { WebReplAdapter } from '@remote-repl/core';
+import { RemoteReplModule } from './remote-repl.module';
+import { RemoteReplController } from './remote-repl.controller';
+import { RemoteReplService } from './remote-repl.service';
+import { REMOTE_REPL_TRANSPORT } from './constants';
+import { RemoteReplInMemoryTransport } from '@remote-repl/core';
+import type { RemoteReplTransport } from '@remote-repl/core';
 
 const boot = async (mod: { module: unknown }): Promise<INestApplication> => {
   const testMod = await Test.createTestingModule({ imports: [mod as never] }).compile();
@@ -25,20 +25,20 @@ const boot = async (mod: { module: unknown }): Promise<INestApplication> => {
   return app;
 };
 
-describe('WebReplModule (register / registerAsync)', () => {
+describe('RemoteReplModule (register / registerAsync)', () => {
   it('register(enabled:false): 404 on every route and never executes', async () => {
-    const app = await boot(WebReplModule.register({ enabled: false }));
+    const app = await boot(RemoteReplModule.register({ enabled: false }));
     expect((await request(app.getHttpServer()).get('/repl/x/ui')).status).toBe(404);
     expect((await request(app.getHttpServer()).post('/repl/x').send({ command: '1+1' })).status).toBe(404);
     expect(
       (await request(app.getHttpServer()).get('/repl/x').set('Accept', 'text/event-stream')).status,
     ).toBe(404);
-    await expect(app.get(WebReplService).dispatch('x', '1+1')).rejects.toThrow();
+    await expect(app.get(RemoteReplService).dispatch('x', '1+1')).rejects.toThrow();
     await app.close();
   });
 
   it('register(enabled:true): serves UI and accepts a command', async () => {
-    const app = await boot(WebReplModule.register({ enabled: true, instanceId: 'A' }));
+    const app = await boot(RemoteReplModule.register({ enabled: true, instanceId: 'A' }));
     expect((await request(app.getHttpServer()).get('/repl/e2e/ui')).status).toBe(200);
     expect((await request(app.getHttpServer()).post('/repl/e2e').send({ command: '3+4' })).status).toBe(202);
     await app.close();
@@ -49,20 +49,20 @@ describe('WebReplModule (register / registerAsync)', () => {
   // live arbitrary-code-execution endpoint.
   it('registerAsync(enabled:false): 404 on every route and never executes', async () => {
     const app = await boot(
-      WebReplModule.registerAsync({ useFactory: () => ({ enabled: false }) }),
+      RemoteReplModule.registerAsync({ useFactory: () => ({ enabled: false }) }),
     );
     expect((await request(app.getHttpServer()).get('/repl/x/ui')).status).toBe(404);
     expect((await request(app.getHttpServer()).post('/repl/x').send({ command: '1+1' })).status).toBe(404);
     expect(
       (await request(app.getHttpServer()).get('/repl/x').set('Accept', 'text/event-stream')).status,
     ).toBe(404);
-    await expect(app.get(WebReplService).dispatch('x', '1+1')).rejects.toThrow();
+    await expect(app.get(RemoteReplService).dispatch('x', '1+1')).rejects.toThrow();
     await app.close();
   });
 
   it('registerAsync(enabled:true): serves UI and accepts a command', async () => {
     const app = await boot(
-      WebReplModule.registerAsync({ useFactory: () => ({ enabled: true, instanceId: 'async-A' }) }),
+      RemoteReplModule.registerAsync({ useFactory: () => ({ enabled: true, instanceId: 'async-A' }) }),
     );
     expect((await request(app.getHttpServer()).get('/repl/x/ui')).status).toBe(200);
     expect((await request(app.getHttpServer()).post('/repl/x').send({ command: '1+1' })).status).toBe(202);
@@ -80,71 +80,71 @@ describe('WebReplModule (register / registerAsync)', () => {
     }
     @Controller('internal/repl')
     @UseGuards(AllowGuard)
-    class SecureReplController extends WebReplController {}
+    class SecureReplController extends RemoteReplController {}
 
     const app = await boot(
-      WebReplModule.register({ enabled: true, controller: SecureReplController }),
+      RemoteReplModule.register({ enabled: true, controller: SecureReplController }),
     );
     expect((await request(app.getHttpServer()).get('/internal/repl/x/ui')).status).toBe(200);
     expect((await request(app.getHttpServer()).get('/repl/x/ui')).status).toBe(404);
     await app.close();
   });
 
-  it('defaults the adapter to InMemoryWebReplAdapter', async () => {
-    const app = await boot(WebReplModule.register({ enabled: true }));
-    expect(app.get<WebReplAdapter>(WEB_REPL_ADAPTER)).toBeInstanceOf(InMemoryWebReplAdapter);
+  it('defaults the transport to RemoteReplInMemoryTransport', async () => {
+    const app = await boot(RemoteReplModule.register({ enabled: true }));
+    expect(app.get<RemoteReplTransport>(REMOTE_REPL_TRANSPORT)).toBeInstanceOf(RemoteReplInMemoryTransport);
     await app.close();
   });
 
-  it('uses a provided adapter instance as-is', async () => {
-    const instance = new InMemoryWebReplAdapter();
-    const app = await boot(WebReplModule.register({ enabled: true, adapter: instance }));
-    expect(app.get<WebReplAdapter>(WEB_REPL_ADAPTER)).toBe(instance);
+  it('uses a provided transport instance as-is', async () => {
+    const instance = new RemoteReplInMemoryTransport();
+    const app = await boot(RemoteReplModule.register({ enabled: true, transport: instance }));
+    expect(app.get<RemoteReplTransport>(REMOTE_REPL_TRANSPORT)).toBe(instance);
     await app.close();
   });
 
-  it('throws on a malformed adapter config', () => {
+  it('throws on a malformed transport config', () => {
     expect(() =>
       // @ts-expect-error — deliberately malformed to prove the runtime guard
-      WebReplModule.register({ enabled: true, adapter: { usClass: InMemoryWebReplAdapter } }),
-    ).toThrow(/invalid adapter/i);
+      RemoteReplModule.register({ enabled: true, transport: { usClass: RemoteReplInMemoryTransport } }),
+    ).toThrow(/invalid transport/i);
   });
 
-  it('builds the adapter via useFactory', async () => {
+  it('builds the transport via useFactory', async () => {
     const app = await boot(
-      WebReplModule.register({
+      RemoteReplModule.register({
         enabled: true,
-        adapter: { useFactory: () => new InMemoryWebReplAdapter() },
+        transport: { useFactory: () => new RemoteReplInMemoryTransport() },
       }),
     );
-    expect(app.get<WebReplAdapter>(WEB_REPL_ADAPTER)).toBeInstanceOf(InMemoryWebReplAdapter);
+    expect(app.get<RemoteReplTransport>(REMOTE_REPL_TRANSPORT)).toBeInstanceOf(RemoteReplInMemoryTransport);
     await app.close();
   });
 
-  // useClass + imports: the adapter is a DI-resolved class that injects a
+  // useClass + imports: the transport is a DI-resolved class that injects a
   // dependency from an imported module -- proving the provider-block form wires
-  // through Nest's DI, which the old instance-only `adapter` option could not.
-  it('builds the adapter via useClass with imports (DI-resolved)', async () => {
+  // through Nest's DI, which the old instance-only `transport` option could not.
+  it('builds the transport via useClass with imports (DI-resolved)', async () => {
     const DEP = Symbol('DEP');
     @Module({ providers: [{ provide: DEP, useValue: 'dep-value' }], exports: [DEP] })
     class DepModule {}
 
     @Injectable()
-    class DiAdapter implements WebReplAdapter {
+    class DiTransport implements RemoteReplTransport {
       constructor(@Inject(DEP) readonly dep: string) {}
       async publish(): Promise<void> {}
       async subscribe(): Promise<void> {}
     }
 
     const app = await boot(
-      WebReplModule.register({
+      RemoteReplModule.register({
         enabled: true,
-        adapter: { useClass: DiAdapter, imports: [DepModule] },
+        transport: { useClass: DiTransport, imports: [DepModule] },
       }),
     );
-    const adapter = app.get<DiAdapter>(WEB_REPL_ADAPTER);
-    expect(adapter).toBeInstanceOf(DiAdapter);
-    expect(adapter.dep).toBe('dep-value');
+    const transport = app.get<DiTransport>(REMOTE_REPL_TRANSPORT);
+    expect(transport).toBeInstanceOf(DiTransport);
+    expect(transport.dep).toBe('dep-value');
     await app.close();
   });
 
@@ -160,7 +160,7 @@ describe('WebReplModule (register / registerAsync)', () => {
       }
     }
     @Module({
-      imports: [WebReplModule.register({ enabled: true, instanceId: 'exec-proof' })],
+      imports: [RemoteReplModule.register({ enabled: true, instanceId: 'exec-proof' })],
       providers: [CatService],
     })
     class AppModule {}

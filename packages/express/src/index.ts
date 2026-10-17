@@ -1,4 +1,4 @@
-export { createReplRouter } from './repl-router';
-export type { ReplRouterEngine, ReplRouterOptions } from './repl-router';
-export { createReplEngine } from './repl-engine';
-export type { ReplEngineOptions } from './repl-engine';
+export { createRemoteReplRouter } from './repl-router';
+export type { RemoteReplRouterEngine, RemoteReplRouterOptions } from './repl-router';
+export { createRemoteReplEngine } from './repl-engine';
+export type { RemoteReplEngineOptions } from './repl-engine';

@@ -1,6 +1,6 @@
 # @remote-repl/nestjs
 
-The NestJS adapter for remote-repl: `WebReplModule` exposes a live NestJS REPL
+The NestJS package for remote-repl: `RemoteReplModule` exposes a live NestJS REPL
 over HTTP. It gives you a command endpoint, an SSE output stream and a Monaco
 browser UI, backed by real `@nestjs/core` REPL sessions that see the whole DI
 container of your app.
@@ -23,11 +23,11 @@ dependencies. Node 20+ is required. Existing apps can keep the
 
 ```ts
 import { Module } from '@nestjs/common';
-import { WebReplModule } from '@remote-repl/nestjs';
+import { RemoteReplModule } from '@remote-repl/nestjs';
 
 @Module({
   imports: [
-    WebReplModule.register({
+    RemoteReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
     }),
   ],
@@ -37,8 +37,8 @@ export class AppModule {}
 
 Start the app with `REPL_ENABLED=true` and open
 `http://localhost:3000/repl/dev/ui`. `registerAsync` reads the options from
-DI. The `controller` extra takes a guarded subclass of `WebReplController`.
-The `adapter` extra takes a transport from `@remote-repl/redis` for several
+DI. The `controller` extra takes a guarded subclass of `RemoteReplController`.
+The `transport` extra takes a transport from `@remote-repl/redis` for several
 replicas.
 
 Full documentation, the options table and the security notes are in the

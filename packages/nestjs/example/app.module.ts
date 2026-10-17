@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { WebReplModule } from '../src';
+import { RemoteReplModule } from '../src';
 import { CatService } from './cat.service';
 
 @Module({
   imports: [
-    WebReplModule.register({
+    RemoteReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
       instanceId: process.env.INSTANCE_ID,
     }),

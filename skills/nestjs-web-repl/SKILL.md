@@ -1,6 +1,6 @@
 ---
 name: nestjs-web-repl
-description: Use when wiring a live, in-process REPL into a NestJS app over HTTP via @remote-repl/nestjs or its nestjs-web-repl shim — adding WebReplModule to AppModule, gating the REPL behind an environment flag, choosing the Redis transport for multiple instances, or calling/debugging its POST command, SSE stream, or browser-UI routes.
+description: Use when wiring a live, in-process REPL into a NestJS app over HTTP via @remote-repl/nestjs or its nestjs-web-repl shim — adding RemoteReplModule to AppModule, gating the REPL behind an environment flag, choosing the Redis transport for multiple instances, or calling/debugging its POST command, SSE stream, or browser-UI routes.
 ---
 
 # nestjs-web-repl
@@ -24,7 +24,7 @@ because it is what most existing apps import; swap the names 1:1.
 
 ## When to use this skill
 
-- Adding `WebReplModule` to a NestJS `AppModule` for the first time.
+- Adding `RemoteReplModule` to a NestJS `AppModule` for the first time.
 - Reviewing or writing the code that enables/disables the REPL (the security
   gate below is non-negotiable).
 - Running several replicas behind a load balancer (Redis transport, `prefix`).
@@ -40,7 +40,7 @@ library ships **no authentication** (intentional). Before adding the module:
   `enabled: process.env.REPL_ENABLED === 'true'`.
 - Never enable it in production without your own authentication or network
   restriction in front of the routes.
-- A disabled module 404s every route and does not subscribe to the adapter —
+- A disabled module 404s every route and does not subscribe to the transport —
   keep it that way.
 
 ## Wire it up
@@ -49,11 +49,11 @@ Add the module to your `AppModule`:
 
 ```ts
 import { Module } from '@nestjs/common';
-import { WebReplModule } from 'nestjs-web-repl'; // or '@remote-repl/nestjs'
+import { RemoteReplModule } from 'nestjs-web-repl'; // or '@remote-repl/nestjs'
 
 @Module({
   imports: [
-    WebReplModule.register({
+    RemoteReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
     }),
   ],
@@ -64,7 +64,7 @@ export class AppModule {}
 Config-driven `enabled` (async form):
 
 ```ts
-WebReplModule.registerAsync({
+RemoteReplModule.registerAsync({
   imports: [ConfigModule],
   inject: [ConfigService],
   useFactory: (config: ConfigService) => ({
@@ -99,26 +99,26 @@ Open `http://localhost:3000/repl/main/ui` in a browser for the interactive UI.
 
 ## When you need more
 
-- **Authentication:** subclass `WebReplController`, decorate it with
+- **Authentication:** subclass `RemoteReplController`, decorate it with
   `@UseGuards(...)`, and pass it as `controller:` to `register`/`registerAsync`.
   See "Securing it" in the repository README.
 - **Multiple app instances** (load-balanced replicas): the default in-memory
-  adapter is per-process. For Redis, import a ready-made adapter from
-  `nestjs-web-repl/redis` (or `@remote-repl/redis`) — `IoRedisWebReplAdapter`
-  (ioredis) or `NodeRedisWebReplAdapter` (node-redis) — and pass it as the
-  `adapter` extra in the same `register` call:
-  `register({ enabled, adapter: new IoRedisWebReplAdapter(client) })`. Hand it
+  transport is per-process. For Redis, import a ready-made transport from
+  `nestjs-web-repl/redis` (or `@remote-repl/redis`) — `RemoteReplIoRedisTransport`
+  (ioredis) or `RemoteReplNodeRedisTransport` (node-redis) — and pass it as the
+  `transport` extra in the same `register` call:
+  `register({ enabled, transport: new RemoteReplIoRedisTransport(client) })`. Hand it
   one connected client; it owns its own subscriber connection. `ioredis` /
   `redis` are optional peers: install the one you use.
 - **Two apps on one Redis:** the topics have no origin check, so unrelated apps
   sharing a Redis would exchange REPL output and ownership. Give each app's
-  adapter its own topic `prefix` (second constructor argument):
-  `new IoRedisWebReplAdapter(client, { prefix: 'billing-api:' })`. Replicas of
+  transport its own topic `prefix` (second constructor argument):
+  `new RemoteReplIoRedisTransport(client, { prefix: 'billing-api:' })`. Replicas of
   one app must share the same prefix; apps with different prefixes never see
   each other. Default: no prefix.
-- **Other brokers:** supply a custom adapter (a ready instance,
+- **Other brokers:** supply a custom transport (a ready instance,
   `{ useClass, imports }`, or `{ useFactory, inject, imports }`) implementing
-  `WebReplAdapter`. See "Adapter / multi-instance" in the README.
+  `RemoteReplTransport`. See "Adapter / multi-instance" in the README.
 - **Options** (base path, TTLs, heartbeats) and **exported symbols:** see
   "Options" and "Exports" in the README.
 - **Runnable example gotcha:** run examples with `ts-node`, not `tsx` —

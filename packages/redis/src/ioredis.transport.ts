@@ -1,32 +1,32 @@
 import {
-  BaseRedisWebReplAdapter,
-  type RedisWebReplAdapterOptions,
-} from './base-redis-web-repl.adapter';
+  RemoteReplBaseRedisTransport,
+  type RemoteReplRedisTransportOptions,
+} from './base-redis.transport';
 
 /** Minimal structural surface of an ioredis client (no `ioredis` import). */
-export interface IoRedisLike {
+export interface RemoteReplIoRedisLike {
   publish(channel: string, message: string): Promise<number>;
   subscribe(channel: string): Promise<unknown>;
-  duplicate(): IoRedisLike;
+  duplicate(): RemoteReplIoRedisLike;
   on(event: 'message', listener: (channel: string, message: string) => void): unknown;
   quit(): Promise<unknown>;
 }
 
 /**
- * Redis adapter backed by ioredis. Pass one connected client (the publisher);
- * the adapter creates and owns a duplicated subscriber connection.
+ * Redis transport backed by ioredis. Pass one connected client (the publisher);
+ * the transport creates and owns a duplicated subscriber connection.
  */
-export class IoRedisWebReplAdapter extends BaseRedisWebReplAdapter {
-  private subscriber?: IoRedisLike;
+export class RemoteReplIoRedisTransport extends RemoteReplBaseRedisTransport {
+  private subscriber?: RemoteReplIoRedisLike;
 
   constructor(
-    private readonly publisher: IoRedisLike,
-    options?: RedisWebReplAdapterOptions,
+    private readonly publisher: RemoteReplIoRedisLike,
+    options?: RemoteReplRedisTransportOptions,
   ) {
     super(options);
   }
 
-  private ensureSubscriber(): IoRedisLike {
+  private ensureSubscriber(): RemoteReplIoRedisLike {
     if (!this.subscriber) {
       this.subscriber = this.publisher.duplicate();
       this.subscriber.on('message', (channel, message) => this.dispatch(channel, message));
@@ -43,7 +43,7 @@ export class IoRedisWebReplAdapter extends BaseRedisWebReplAdapter {
   }
 
   protected async teardown(): Promise<void> {
-    // Detach before awaiting quit() -- see NodeRedisWebReplAdapter.teardown.
+    // Detach before awaiting quit() -- see RemoteReplNodeRedisTransport.teardown.
     const sub = this.subscriber;
     this.subscriber = undefined;
     if (sub) await sub.quit();

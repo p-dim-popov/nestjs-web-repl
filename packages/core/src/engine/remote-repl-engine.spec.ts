@@ -359,7 +359,7 @@ describe('RemoteReplEngine', () => {
   });
 
   describe('enabled', () => {
-    it('exposes the configured `enabled` flag read-only, so adapters derive it from the engine', async () => {
+    it('exposes the configured `enabled` flag read-only, so framework packages derive it from the engine', async () => {
       const on = await makeEngine('ON', new RemoteReplInMemoryTransport());
       expect(on.enabled).toBe(true);
       await on.stop();

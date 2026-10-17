@@ -23,7 +23,7 @@ import {
   uniquePrefix,
   type Pair,
 } from './harness';
-import { TOPICS } from '@remote-repl/core';
+import { REMOTE_REPL_TOPICS } from '@remote-repl/core';
 import { transports, type Transport } from './transports';
 
 describe.each(transports)('contract over $name', (transport: Transport) => {
@@ -226,12 +226,12 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       // workers, so the subscriber count must be on topics only this
       // instance could touch.
       const prefix = uniquePrefix('off');
-      const topics = Object.values(TOPICS).map((t) => prefix + t);
+      const topics = Object.values(REMOTE_REPL_TOPICS).map((t) => prefix + t);
       const log = await observer.watch(topics);
       const before = await observer.numsub(topics); // includes the observer itself
 
       const t = await transport.make({ prefix });
-      const disabled = await bootInstance(t.adapter, { instanceId: 'OFF', enabled: false });
+      const disabled = await bootInstance(t.transport, { instanceId: 'OFF', enabled: false });
       try {
         const channel = uniqueChannel('off');
         expect((await disabled.get('/repl')).status).toBe(404);
@@ -257,8 +257,8 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
     const bootApps = async (prefixA?: string, prefixB?: string) => {
       const ta = await transport.make({ prefix: prefixA });
       const tb = await transport.make({ prefix: prefixB });
-      const a = await bootInstance(ta.adapter, { instanceId: 'app-A' });
-      const b = await bootInstance(tb.adapter, { instanceId: 'app-B' });
+      const a = await bootInstance(ta.transport, { instanceId: 'app-A' });
+      const b = await bootInstance(tb.transport, { instanceId: 'app-B' });
       return {
         a,
         b,
@@ -295,7 +295,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
     it('with the SAME prefix, the apps share output and ownership like replicas -- the prefix is a tenancy key, not an app id', async () => {
       const observer = await observeRedis();
       const shared = uniquePrefix('shared');
-      const wire = await observer.watch([shared + TOPICS.out]);
+      const wire = await observer.watch([shared + REMOTE_REPL_TOPICS.out]);
       const apps = await bootApps(shared, shared);
       try {
         const channel = uniqueChannel('same-prefix');
@@ -309,7 +309,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
         expect(out.event.commandId).toBe(second.commandId);
         // Both apps put their traffic on the same prefixed wire topic.
         expect(wire.length).toBeGreaterThan(0);
-        expect(wire.every((m) => m.startsWith(`${shared}${TOPICS.out} `))).toBe(true);
+        expect(wire.every((m) => m.startsWith(`${shared}${REMOTE_REPL_TOPICS.out} `))).toBe(true);
         sseB.close();
       } finally {
         await apps.closeAll();
@@ -321,7 +321,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
       const observer = await observeRedis();
       const prefixA = uniquePrefix('app-a');
       const prefixB = uniquePrefix('app-b');
-      const prefixedOut = await observer.watch([prefixA + TOPICS.out]);
+      const prefixedOut = await observer.watch([prefixA + REMOTE_REPL_TOPICS.out]);
       const apps = await bootApps(prefixA, prefixB);
       try {
         const channel = uniqueChannel('isolated');
@@ -345,7 +345,7 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
 
         // The prefix is prepended verbatim to the wire topic names.
         expect(prefixedOut.length).toBeGreaterThan(0);
-        expect(prefixedOut.every((m) => m.startsWith(`${prefixA}${TOPICS.out} `))).toBe(true);
+        expect(prefixedOut.every((m) => m.startsWith(`${prefixA}${REMOTE_REPL_TOPICS.out} `))).toBe(true);
         sseA.close();
         sseB.close();
       } finally {

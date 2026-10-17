@@ -1,17 +1,17 @@
 import { NotFoundException } from '@nestjs/common';
 import { firstValueFrom, toArray } from 'rxjs';
 import { take } from 'rxjs/operators';
-import { WebReplService } from './web-repl.service';
-import { InMemoryWebReplAdapter } from '@remote-repl/core';
-import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
+import { RemoteReplService } from './remote-repl.service';
+import { RemoteReplInMemoryTransport } from '@remote-repl/core';
+import type { RemoteReplModuleOptions } from './interfaces/remote-repl-options.interface';
 
 const makeService = async (
   instanceId: string,
-  adapter: InMemoryWebReplAdapter,
+  transport: RemoteReplInMemoryTransport,
   contextFactory: () => Record<string, unknown> = () => ({ marker: () => 'ctx-ok' }),
 ) => {
-  const options: WebReplModuleOptions = { enabled: true, instanceId };
-  const svc = new WebReplService(options, adapter, contextFactory);
+  const options: RemoteReplModuleOptions = { enabled: true, instanceId };
+  const svc = new RemoteReplService(options, transport, contextFactory);
   await svc.onModuleInit();
   return svc;
 };
@@ -31,21 +31,21 @@ const makeSharedClock = (start = 0) => {
 
 const makeServiceWithClock = async (
   instanceId: string,
-  adapter: InMemoryWebReplAdapter,
+  transport: RemoteReplInMemoryTransport,
   clock: () => number,
-  overrides: Partial<WebReplModuleOptions> = {},
+  overrides: Partial<RemoteReplModuleOptions> = {},
   contextFactory: () => Record<string, unknown> = () => ({ marker: () => 'ctx-ok' }),
 ) => {
-  const options: WebReplModuleOptions = { enabled: true, instanceId, ...overrides };
-  const svc = new WebReplService(options, adapter, contextFactory, clock);
+  const options: RemoteReplModuleOptions = { enabled: true, instanceId, ...overrides };
+  const svc = new RemoteReplService(options, transport, contextFactory, clock);
   await svc.onModuleInit();
   return svc;
 };
 
-describe('WebReplService', () => {
+describe('RemoteReplService', () => {
   it('executes a command and streams a command echo plus output', async () => {
-    const adapter = new InMemoryWebReplAdapter();
-    const svc = await makeService('A', adapter);
+    const transport = new RemoteReplInMemoryTransport();
+    const svc = await makeService('A', transport);
 
     const events = firstValueFrom(svc.stream('c1', null).pipe(take(2), toArray()));
     const { commandId } = await svc.dispatch('c1', '2 + 3');
@@ -59,9 +59,9 @@ describe('WebReplService', () => {
   });
 
   it('routes execution to the owning instance only', async () => {
-    const adapter = new InMemoryWebReplAdapter();
-    const a = await makeService('A', adapter);
-    const b = await makeService('B', adapter);
+    const transport = new RemoteReplInMemoryTransport();
+    const a = await makeService('A', transport);
+    const b = await makeService('B', transport);
 
     // A owns c2 because A receives the HTTP dispatch (origin = A).
     await a.dispatch('c2', 'const v = 10');
@@ -81,8 +81,8 @@ describe('WebReplService', () => {
   });
 
   it('replays buffered events to a late subscriber', async () => {
-    const adapter = new InMemoryWebReplAdapter();
-    const svc = await makeService('A', adapter);
+    const transport = new RemoteReplInMemoryTransport();
+    const svc = await makeService('A', transport);
     await svc.dispatch('c3', '7 * 6');
     await new Promise((r) => setTimeout(r, 20));
 
@@ -93,8 +93,8 @@ describe('WebReplService', () => {
   });
 
   it("tags each command's output with its own commandId under same-channel overlap", async () => {
-    const adapter = new InMemoryWebReplAdapter();
-    const svc = await makeService('A', adapter, () => ({
+    const transport = new RemoteReplInMemoryTransport();
+    const svc = await makeService('A', transport, () => ({
       sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
     }));
 
@@ -123,7 +123,7 @@ describe('WebReplService', () => {
   });
 
   it('keeps the channel alive after a command whose execution throws', async () => {
-    const adapter = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     let calls = 0;
     // ensureSession only caches state.session *after* the ReplSession is
     // successfully constructed, so a throwing buildContext() leaves
@@ -134,7 +134,7 @@ describe('WebReplService', () => {
       if (calls === 1) throw new Error('boom');
       return { marker: () => 'ok' };
     };
-    const svc = await makeService('A', adapter, factory);
+    const svc = await makeService('A', transport, factory);
 
     const events: Array<{ type: string; commandId: string | null; data: unknown }> = [];
     const sub = svc.stream('c5', null).subscribe((e) => events.push(e));
@@ -168,8 +168,8 @@ describe('WebReplService', () => {
     // force the same teardown a TTL/ownership release performs, then
     // invoke that session's stored onOutput closure directly to simulate
     // the late write and assert it's dropped, not re-buffered/replayed.
-    const adapter = new InMemoryWebReplAdapter();
-    const svc = await makeService('A', adapter);
+    const transport = new RemoteReplInMemoryTransport();
+    const svc = await makeService('A', transport);
 
     await svc.dispatch('c6', '1 + 1');
     await new Promise((r) => setTimeout(r, 20));
@@ -206,15 +206,15 @@ describe('WebReplService', () => {
   // module-registration time, so a registerAsync-resolved `enabled: false`
   // can't ship a live execution endpoint. ---
   describe('when disabled at runtime', () => {
-    const makeDisabledService = (adapter: InMemoryWebReplAdapter) => {
-      const options: WebReplModuleOptions = { enabled: false, instanceId: 'D' };
-      return new WebReplService(options, adapter, () => ({ marker: () => 'ctx-ok' }));
+    const makeDisabledService = (transport: RemoteReplInMemoryTransport) => {
+      const options: RemoteReplModuleOptions = { enabled: false, instanceId: 'D' };
+      return new RemoteReplService(options, transport, () => ({ marker: () => 'ctx-ok' }));
     };
 
-    it('does not subscribe to the adapter on onModuleInit', async () => {
-      const adapter = new InMemoryWebReplAdapter();
-      const subscribeSpy = vi.spyOn(adapter, 'subscribe');
-      const svc = makeDisabledService(adapter);
+    it('does not subscribe to the transport on onModuleInit', async () => {
+      const transport = new RemoteReplInMemoryTransport();
+      const subscribeSpy = vi.spyOn(transport, 'subscribe');
+      const svc = makeDisabledService(transport);
 
       await svc.onModuleInit();
 
@@ -223,9 +223,9 @@ describe('WebReplService', () => {
     });
 
     it('dispatch() throws NotFoundException and never publishes a command', async () => {
-      const adapter = new InMemoryWebReplAdapter();
-      const publishSpy = vi.spyOn(adapter, 'publish');
-      const svc = makeDisabledService(adapter);
+      const transport = new RemoteReplInMemoryTransport();
+      const publishSpy = vi.spyOn(transport, 'publish');
+      const svc = makeDisabledService(transport);
       await svc.onModuleInit();
 
       await expect(svc.dispatch('dchan', '1 + 1')).rejects.toThrow(NotFoundException);
@@ -235,8 +235,8 @@ describe('WebReplService', () => {
     });
 
     it('stream() throws NotFoundException instead of returning an observable', async () => {
-      const adapter = new InMemoryWebReplAdapter();
-      const svc = makeDisabledService(adapter);
+      const transport = new RemoteReplInMemoryTransport();
+      const svc = makeDisabledService(transport);
       await svc.onModuleInit();
 
       expect(() => svc.stream('dchan', null)).toThrow(NotFoundException);
@@ -250,8 +250,8 @@ describe('WebReplService', () => {
   // subscriber disconnects, so an unauthenticated client looping
   // `GET /repl/<random>` can't grow the channels map without bound. ---
   it('evicts a subscriber-less, session-less, empty-buffer channel once the last subscriber unsubscribes', async () => {
-    const adapter = new InMemoryWebReplAdapter();
-    const svc = await makeService('A', adapter);
+    const transport = new RemoteReplInMemoryTransport();
+    const svc = await makeService('A', transport);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const internals = svc as any;
@@ -272,8 +272,8 @@ describe('WebReplService', () => {
   });
 
   it('does not evict a channel that still has buffered replay history after its subscriber leaves', async () => {
-    const adapter = new InMemoryWebReplAdapter();
-    const svc = await makeService('A', adapter);
+    const transport = new RemoteReplInMemoryTransport();
+    const svc = await makeService('A', transport);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const internals = svc as any;
 
@@ -309,8 +309,8 @@ describe('WebReplService', () => {
   // the exact window between its synchronous `pending` increment and its
   // first `await`. ---
   it('keeps an in-flight command session-consistent even if the last subscriber unsubscribes mid-dispatch', async () => {
-    const adapter = new InMemoryWebReplAdapter();
-    const svc = await makeService('A', adapter);
+    const transport = new RemoteReplInMemoryTransport();
+    const svc = await makeService('A', transport);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const internals = svc as any;
 
@@ -376,14 +376,14 @@ describe('WebReplService', () => {
   // the bug this feature exists to avoid introducing. ---
   describe('owner-liveness (lease-based ownership)', () => {
     it('takes over a channel after its owner goes stale, restoring availability', async () => {
-      const adapter = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const clock = makeSharedClock();
       // ownerLeaseTtl must satisfy the enforced 2x margin over the
       // heartbeat interval (60_000 * 2 = 120_000 minimum) -- 150_000 gives
       // headroom above that minimum for these tests' clock arithmetic.
       const opts = { ownerHeartbeatInterval: 60_000, ownerLeaseTtl: 150_000 };
-      const a = await makeServiceWithClock('A', adapter, clock.now, opts);
-      const b = await makeServiceWithClock('B', adapter, clock.now, opts);
+      const a = await makeServiceWithClock('A', transport, clock.now, opts);
+      const b = await makeServiceWithClock('B', transport, clock.now, opts);
 
       await a.dispatch('lease-c1', 'const oldVar = 1');
       await new Promise((r) => setTimeout(r, 20));
@@ -423,14 +423,14 @@ describe('WebReplService', () => {
     });
 
     it('does not preempt a live owner within the lease window', async () => {
-      const adapter = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const clock = makeSharedClock();
       // ownerLeaseTtl must satisfy the enforced 2x margin over the
       // heartbeat interval (60_000 * 2 = 120_000 minimum) -- 150_000 gives
       // headroom above that minimum for these tests' clock arithmetic.
       const opts = { ownerHeartbeatInterval: 60_000, ownerLeaseTtl: 150_000 };
-      const a = await makeServiceWithClock('A', adapter, clock.now, opts);
-      const b = await makeServiceWithClock('B', adapter, clock.now, opts);
+      const a = await makeServiceWithClock('A', transport, clock.now, opts);
+      const b = await makeServiceWithClock('B', transport, clock.now, opts);
 
       await a.dispatch('lease-c2', 'const v = 10');
       await new Promise((r) => setTimeout(r, 20));
@@ -458,14 +458,14 @@ describe('WebReplService', () => {
     });
 
     it('an owner heartbeat refreshes the lease, preventing a later takeover', async () => {
-      const adapter = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const clock = makeSharedClock();
       // ownerLeaseTtl must satisfy the enforced 2x margin over the
       // heartbeat interval (60_000 * 2 = 120_000 minimum) -- 150_000 gives
       // headroom above that minimum for these tests' clock arithmetic.
       const opts = { ownerHeartbeatInterval: 60_000, ownerLeaseTtl: 150_000 };
-      const a = await makeServiceWithClock('A', adapter, clock.now, opts);
-      const b = await makeServiceWithClock('B', adapter, clock.now, opts);
+      const a = await makeServiceWithClock('A', transport, clock.now, opts);
+      const b = await makeServiceWithClock('B', transport, clock.now, opts);
 
       await a.dispatch('lease-c3', 'const v = 1');
       await new Promise((r) => setTimeout(r, 20));
@@ -502,8 +502,8 @@ describe('WebReplService', () => {
     });
 
     it('clamps a requested ownerLeaseTtl below the 2x margin instead of throwing', async () => {
-      const adapter = new InMemoryWebReplAdapter();
-      const options: WebReplModuleOptions = {
+      const transport = new RemoteReplInMemoryTransport();
+      const options: RemoteReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
         ownerHeartbeatInterval: 10_000,
@@ -514,9 +514,9 @@ describe('WebReplService', () => {
         ownerLeaseTtl: 10_001,
       };
 
-      let svc: WebReplService | undefined;
+      let svc: RemoteReplService | undefined;
       expect(() => {
-        svc = new WebReplService(options, adapter, () => ({}));
+        svc = new RemoteReplService(options, transport, () => ({}));
       }).not.toThrow();
       await svc!.onModuleInit();
 
@@ -533,15 +533,15 @@ describe('WebReplService', () => {
     });
 
     it('also clamps a requested ownerLeaseTtl at or below ownerHeartbeatInterval', async () => {
-      const adapter = new InMemoryWebReplAdapter();
-      const options: WebReplModuleOptions = {
+      const transport = new RemoteReplInMemoryTransport();
+      const options: RemoteReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
         ownerHeartbeatInterval: 10_000,
         ownerLeaseTtl: 5_000, // <= heartbeat -- must be clamped, not thrown
       };
 
-      const svc = new WebReplService(options, adapter, () => ({}));
+      const svc = new RemoteReplService(options, transport, () => ({}));
       await svc.onModuleInit();
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -552,15 +552,15 @@ describe('WebReplService', () => {
     });
 
     it('respects a requested ownerLeaseTtl that already satisfies the 2x margin', async () => {
-      const adapter = new InMemoryWebReplAdapter();
-      const options: WebReplModuleOptions = {
+      const transport = new RemoteReplInMemoryTransport();
+      const options: RemoteReplModuleOptions = {
         enabled: true,
         instanceId: 'A',
         ownerHeartbeatInterval: 10_000,
         ownerLeaseTtl: 25_000, // > 10_000 * 2 -- must be respected as-is
       };
 
-      const svc = new WebReplService(options, adapter, () => ({}));
+      const svc = new RemoteReplService(options, transport, () => ({}));
       await svc.onModuleInit();
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -573,15 +573,15 @@ describe('WebReplService', () => {
     it('exercises the real background heartbeat timer, publishing a claim for an owned channel', async () => {
       vi.useFakeTimers();
       try {
-        const adapter = new InMemoryWebReplAdapter();
-        const publishSpy = vi.spyOn(adapter, 'publish');
-        const options: WebReplModuleOptions = {
+        const transport = new RemoteReplInMemoryTransport();
+        const publishSpy = vi.spyOn(transport, 'publish');
+        const options: RemoteReplModuleOptions = {
           enabled: true,
           instanceId: 'A',
           ownerHeartbeatInterval: 5_000,
           ownerLeaseTtl: 20_000,
         };
-        const svc = new WebReplService(options, adapter, () => ({}));
+        const svc = new RemoteReplService(options, transport, () => ({}));
         await svc.onModuleInit();
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

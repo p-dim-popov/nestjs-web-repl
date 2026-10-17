@@ -1,34 +1,34 @@
 import {
-  BaseRedisWebReplAdapter,
-  type RedisWebReplAdapterOptions,
-} from './base-redis-web-repl.adapter';
+  RemoteReplBaseRedisTransport,
+  type RemoteReplRedisTransportOptions,
+} from './base-redis.transport';
 
 /** Minimal structural surface of a node-redis v4 client (no `redis` import). */
-export interface NodeRedisLike {
+export interface RemoteReplNodeRedisLike {
   publish(channel: string, message: string): Promise<number>;
   subscribe(channel: string, listener: (message: string, channel: string) => void): Promise<void>;
-  duplicate(): NodeRedisLike;
+  duplicate(): RemoteReplNodeRedisLike;
   connect(): Promise<unknown>;
   quit(): Promise<unknown>;
 }
 
 /**
- * Redis adapter backed by node-redis v4. Pass one connected client (the
- * publisher); the adapter duplicates it, connects the copy (v4 duplicates start
+ * Redis transport backed by node-redis v4. Pass one connected client (the
+ * publisher); the transport duplicates it, connects the copy (v4 duplicates start
  * disconnected), and owns that subscriber connection.
  */
-export class NodeRedisWebReplAdapter extends BaseRedisWebReplAdapter {
-  private subscriber?: NodeRedisLike;
-  private connecting?: Promise<NodeRedisLike>;
+export class RemoteReplNodeRedisTransport extends RemoteReplBaseRedisTransport {
+  private subscriber?: RemoteReplNodeRedisLike;
+  private connecting?: Promise<RemoteReplNodeRedisLike>;
 
   constructor(
-    private readonly publisher: NodeRedisLike,
-    options?: RedisWebReplAdapterOptions,
+    private readonly publisher: RemoteReplNodeRedisLike,
+    options?: RemoteReplRedisTransportOptions,
   ) {
     super(options);
   }
 
-  private async ensureSubscriber(): Promise<NodeRedisLike> {
+  private async ensureSubscriber(): Promise<RemoteReplNodeRedisLike> {
     if (this.subscriber) return this.subscriber;
     if (!this.connecting) {
       const sub = this.publisher.duplicate();
@@ -50,8 +50,8 @@ export class NodeRedisWebReplAdapter extends BaseRedisWebReplAdapter {
   }
 
   protected async teardown(): Promise<void> {
-    // Detach BEFORE awaiting quit(): Nest invokes onModuleDestroy on this
-    // adapter (it is a provider) AND WebReplService calls it again, so two
+    // Detach BEFORE awaiting quit(): Nest invokes close on this
+    // transport (it is a provider) AND RemoteReplService calls it again, so two
     // teardowns run concurrently on shutdown. A real client throws on a
     // second quit(); clearing the field first makes the second call a no-op.
     const sub = this.subscriber;

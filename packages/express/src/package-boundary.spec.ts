@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// @remote-repl/express is a thin HTTP adapter: it wires core's shared route
+// @remote-repl/express is a thin HTTP layer: it wires core's shared route
 // handlers onto an Express Router. It depends on core and nothing else at
 // runtime; Express itself is the host app's and so a PEER. It must never
 // pull NestJS or rxjs in.

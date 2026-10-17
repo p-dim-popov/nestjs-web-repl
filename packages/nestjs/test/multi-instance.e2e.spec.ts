@@ -3,21 +3,21 @@ import { Test } from '@nestjs/testing';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
-import { WebReplModule } from '../src/web-repl.module';
-import { InMemoryWebReplAdapter } from '@remote-repl/core';
+import { RemoteReplModule } from '../src/remote-repl.module';
+import { RemoteReplInMemoryTransport } from '@remote-repl/core';
 
-// Boots a real, listening Nest app wired to WebReplModule, sharing the given
-// adapter instance with any other app booted the same way. Because
-// InMemoryWebReplAdapter is just an in-process EventEmitter, two apps in the
-// same test process that share one adapter instance behave like two
+// Boots a real, listening Nest app wired to RemoteReplModule, sharing the given
+// transport instance with any other app booted the same way. Because
+// RemoteReplInMemoryTransport is just an in-process EventEmitter, two apps in the
+// same test process that share one transport instance behave like two
 // horizontally-scaled instances behind a real pub/sub backend: both
-// WebReplService instances subscribe to the same 'cmd'/'out'/'sys' topics.
+// RemoteReplService instances subscribe to the same 'cmd'/'out'/'sys' topics.
 const boot = async (
   instanceId: string,
-  adapter: InMemoryWebReplAdapter,
+  transport: RemoteReplInMemoryTransport,
 ): Promise<INestApplication> => {
   const mod = await Test.createTestingModule({
-    imports: [WebReplModule.register({ enabled: true, instanceId, adapter })],
+    imports: [RemoteReplModule.register({ enabled: true, instanceId, transport })],
   }).compile();
   const app: INestApplication = mod.createNestApplication();
   await app.init();
@@ -25,14 +25,14 @@ const boot = async (
   return app;
 };
 
-describe('multi-instance web-repl (cross-instance routing + fan-out)', () => {
-  const adapter = new InMemoryWebReplAdapter();
+describe('multi-instance remote-repl (cross-instance routing + fan-out)', () => {
+  const transport = new RemoteReplInMemoryTransport();
   let a: INestApplication;
   let b: INestApplication;
 
   beforeAll(async () => {
-    a = await boot('A', adapter);
-    b = await boot('B', adapter);
+    a = await boot('A', transport);
+    b = await boot('B', transport);
   });
 
   afterAll(async () => {
@@ -52,13 +52,13 @@ describe('multi-instance web-repl (cross-instance routing + fan-out)', () => {
   // not just that some output arrived.
   //
   // The SSE stream is read via a raw http.get against instance B's bound
-  // port (the same technique already proven in web-repl.module.spec.ts),
+  // port (the same technique already proven in remote-repl.module.spec.ts),
   // rather than the `eventsource` package: Node's http client is sufficient
   // to accumulate an SSE response body, so no extra dependency is needed.
   // Reading from B (not A) additionally proves output fan-out: B never
   // executes the command, yet its own SSE stream still observes the output
-  // produced by A's execution, because both instances' WebReplService
-  // subscribe to the shared adapter's 'out' topic.
+  // produced by A's execution, because both instances' RemoteReplService
+  // subscribe to the shared transport's 'out' topic.
   it('persists a variable across commands posted to different instances and fans output to both', async () => {
     const channel = 'shared';
     const { port: portB } = b.getHttpServer().address() as AddressInfo;
@@ -86,7 +86,7 @@ describe('multi-instance web-repl (cross-instance routing + fan-out)', () => {
       // Let the SSE connection on B establish before dispatching anything.
       // (Strictly, B's per-channel ring buffer would replay history to a
       // late subscriber too, but connecting first mirrors the already
-      // proven pattern in web-repl.module.spec.ts and keeps this test
+      // proven pattern in remote-repl.module.spec.ts and keeps this test
       // honest about ordering.)
       setTimeout(() => {
         request(a.getHttpServer())

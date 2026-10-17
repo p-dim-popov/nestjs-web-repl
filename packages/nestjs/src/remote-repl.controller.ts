@@ -18,35 +18,35 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import {
-  createReplHandlers,
-  InvalidCommandError,
-  parseLastEventId,
-  ReplDisabledError,
-  type ReplHandlers,
+  createRemoteReplHandlers,
+  RemoteReplInvalidCommandError,
+  parseRemoteReplLastEventId,
+  RemoteReplDisabledError,
+  type RemoteReplHandlers,
 } from '@remote-repl/core';
-import { WEB_REPL_OPTIONS } from './constants';
-import type { WebReplModuleOptions } from './interfaces/web-repl-options.interface';
-import { WebReplService } from './web-repl.service';
+import { REMOTE_REPL_OPTIONS } from './constants';
+import type { RemoteReplModuleOptions } from './interfaces/remote-repl-options.interface';
+import { RemoteReplService } from './remote-repl.service';
 
 /**
- * Thin HTTP wiring over core's shared route handlers (`createReplHandlers`).
+ * Thin HTTP wiring over core's shared route handlers (`createRemoteReplHandlers`).
  * All route logic -- body validation, landing redirect, UI rendering, the
  * Monaco asset traversal guard, SSE heartbeat id-stamping -- lives in core;
  * this class only maps Nest params in and core's errors out.
  */
 @Controller('repl')
-export class WebReplController {
-  private readonly handlers: ReplHandlers;
+export class RemoteReplController {
+  private readonly handlers: RemoteReplHandlers;
 
   constructor(
-    protected readonly service: WebReplService,
-    @Inject(WEB_REPL_OPTIONS) private readonly options: WebReplModuleOptions,
+    protected readonly service: RemoteReplService,
+    @Inject(REMOTE_REPL_OPTIONS) private readonly options: RemoteReplModuleOptions,
   ) {
     // CRITICAL: register/registerAsync always register this controller;
     // `enabled` is enforced at runtime so a disabled module 404s on every
     // route. The handlers read `options.enabled` on every call (the options
-    // object is shared, not copied), and `ReplDisabledError` maps to 404 below.
-    this.handlers = createReplHandlers(service, options);
+    // object is shared, not copied), and `RemoteReplDisabledError` maps to 404 below.
+    this.handlers = createRemoteReplHandlers(service, options);
   }
 
   // Landing route: a visit with no channel gets a random one. Runs on this
@@ -78,7 +78,7 @@ export class WebReplController {
   ): Observable<MessageEvent> {
     // Opened eagerly here (not at subscribe time) so a disabled module fails
     // the request with 404 before Nest commits the SSE headers.
-    const frames = guard(() => this.handlers.streamFrames(channel, parseLastEventId(lastEventId)));
+    const frames = guard(() => this.handlers.streamFrames(channel, parseRemoteReplLastEventId(lastEventId)));
     return fromAsyncIterator(frames);
   }
 
@@ -110,8 +110,8 @@ function guard<T>(fn: () => T): T {
 }
 
 function toHttpException(err: unknown): unknown {
-  if (err instanceof ReplDisabledError) return new NotFoundException();
-  if (err instanceof InvalidCommandError) return new BadRequestException(err.message);
+  if (err instanceof RemoteReplDisabledError) return new NotFoundException();
+  if (err instanceof RemoteReplInvalidCommandError) return new BadRequestException(err.message);
   return err;
 }
 

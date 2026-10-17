@@ -1,6 +1,6 @@
 # @remote-repl/express
 
-The Express adapter for remote-repl: an Express `Router` that exposes a live,
+The Express package for remote-repl: an Express `Router` that exposes a live,
 in-process Node.js REPL over HTTP. It gives you a command endpoint, an SSE
 output stream and a Monaco browser UI, backed by the framework-free engine in
 `@remote-repl/core`.
@@ -21,20 +21,20 @@ npm install @remote-repl/express @remote-repl/core
 
 ```ts
 import express from 'express';
-import { InMemoryWebReplAdapter } from '@remote-repl/core';
-import { createReplEngine, createReplRouter } from '@remote-repl/express';
+import { RemoteReplInMemoryTransport } from '@remote-repl/core';
+import { createRemoteReplEngine, createRemoteReplRouter } from '@remote-repl/express';
 
 const enabled = process.env.REPL_ENABLED === 'true';
 
-const engine = createReplEngine({
+const engine = createRemoteReplEngine({
   options: { enabled },
-  transport: new InMemoryWebReplAdapter(),
+  transport: new RemoteReplInMemoryTransport(),
   context: { db }, // what every REPL session sees as globals
 });
 await engine.start(); // no-op when disabled
 
 const app = express();
-app.use('/repl', requireAdmin, createReplRouter({ engine }));
+app.use('/repl', requireAdmin, createRemoteReplRouter({ engine }));
 app.listen(3000);
 ```
 

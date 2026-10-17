@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // @remote-repl/redis is a transport package: it bridges the core protocol to
-// a Redis pub/sub bus. It depends on core (the WebReplAdapter interface) and
+// a Redis pub/sub bus. It depends on core (the RemoteReplTransport interface) and
 // nothing else; the Redis clients themselves are OPTIONAL peers so a consumer
 // installs exactly the one it uses. It must never pull a framework or rxjs in.
 describe('@remote-repl/redis package boundary', () => {

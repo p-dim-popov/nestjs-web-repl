@@ -25,14 +25,14 @@ a thin shim over the `@remote-repl` packages. See [Packages](#packages).
 
 | Package               | What it is                                                                                                        | Install                                             |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `@remote-repl/core`   | The engine, the protocol types, the in-memory transport, the browser UI (the per-request UI page plus the Monaco UI bundle) and the shared handler layer. No framework. | A dependency of the adapters. Install it directly only to write a new adapter. |
-| `@remote-repl/nestjs` | The NestJS adapter: `WebReplModule.register` / `registerAsync`, the controller, the DI-container context.          | `npm install @remote-repl/nestjs`                   |
-| `@remote-repl/express`| The Express adapter: `createReplEngine` + `createReplRouter`. Mount the router, the mount path is the base path.  | `npm install @remote-repl/express @remote-repl/core` |
+| `@remote-repl/core`   | The engine, the protocol types, the in-memory transport, the browser UI (the per-request UI page plus the Monaco UI bundle) and the shared handler layer. No framework. | A dependency of the framework packages. Install it directly only to write a new one. |
+| `@remote-repl/nestjs` | The NestJS package: `RemoteReplModule.register` / `registerAsync`, the controller, the DI-container context.          | `npm install @remote-repl/nestjs`                   |
+| `@remote-repl/express`| The Express package: `createRemoteReplEngine` + `createRemoteReplRouter`. Mount the router, the mount path is the base path.  | `npm install @remote-repl/express @remote-repl/core` |
 | `@remote-repl/redis`  | The Redis transports (`ioredis` and `node-redis`) for several instances, with an optional topic `prefix`.          | `npm install @remote-repl/redis` plus `ioredis` or `redis` |
 | `nestjs-web-repl`     | The legacy name. A shim that re-exports `@remote-repl/nestjs`, and `@remote-repl/redis` under `nestjs-web-repl/redis`. | `npm install nestjs-web-repl`                       |
 
-All packages require Node 20+. The NestJS adapter requires NestJS 10 or 11. The
-Express adapter requires Express 4.16+ or 5. The Redis clients are optional peer
+All packages require Node 20+. The NestJS package requires NestJS 10 or 11. The
+Express package requires Express 4.16+ or 5. The Redis clients are optional peer
 dependencies: install the one that you use.
 
 The short per-package READMEs are in [`packages/core/README.md`](./packages/core/README.md),
@@ -66,11 +66,11 @@ After that, the REPL is live. The [demo project](./examples/stackblitz) and its
 
 ```ts
 import { Module } from '@nestjs/common';
-import { WebReplModule } from '@remote-repl/nestjs'; // or 'nestjs-web-repl'
+import { RemoteReplModule } from '@remote-repl/nestjs'; // or 'nestjs-web-repl'
 
 @Module({
   imports: [
-    WebReplModule.register({
+    RemoteReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
     }),
   ],
@@ -82,14 +82,14 @@ Start the app with `REPL_ENABLED=true` and open `http://localhost:3000/repl/dev/
 Here `dev` is a channel name. See [Endpoints](#endpoints). Type a command and press
 `Ctrl+Enter`. The REPL context is app-wide. `get(SomeProviderFromAnyModule)`
 resolves from the whole DI container, not only from the module that imports
-`WebReplModule`.
+`RemoteReplModule`.
 
 Pick one package name per app. `@remote-repl/nestjs` and `nestjs-web-repl`
 export the same objects, but two installs can resolve to two copies.
 
 A runnable example is in [`packages/nestjs/example/`](./packages/nestjs/example).
 `packages/nestjs/example/cat.service.ts` registers a small `CatService`.
-`packages/nestjs/example/app.module.ts` calls `WebReplModule.register(...)`.
+`packages/nestjs/example/app.module.ts` calls `RemoteReplModule.register(...)`.
 `packages/nestjs/example/main.ts` starts the app. From a checkout of this repo,
 build first, then run:
 
@@ -114,20 +114,20 @@ get(CatService).findAll()
 
 ```ts
 import express from 'express';
-import { InMemoryWebReplAdapter } from '@remote-repl/core';
-import { createReplEngine, createReplRouter } from '@remote-repl/express';
+import { RemoteReplInMemoryTransport } from '@remote-repl/core';
+import { createRemoteReplEngine, createRemoteReplRouter } from '@remote-repl/express';
 
 const enabled = process.env.REPL_ENABLED === 'true';
 
-const engine = createReplEngine({
+const engine = createRemoteReplEngine({
   options: { enabled },
-  transport: new InMemoryWebReplAdapter(), // one process; see Redis below
+  transport: new RemoteReplInMemoryTransport(), // one process; see Redis below
   context: { catService },                 // the globals every session sees
 });
 await engine.start(); // no-op when disabled
 
 const app = express();
-app.use('/repl', requireAdmin, createReplRouter({ engine }));
+app.use('/repl', requireAdmin, createRemoteReplRouter({ engine }));
 //          ^ mount path = base path      ^ your auth middleware, in front
 
 const server = app.listen(3000);
@@ -166,7 +166,7 @@ REPL_ENABLED=true PORT=3000 npm run example:express
 
 ## Endpoints
 
-Both adapters register the same five routes. Every endpoint except the bare
+Both transports register the same five routes. Every endpoint except the bare
 `/repl` redirect has a `:channel` path segment. A channel is a string that you
 choose, for example `dev`, `prod-debug`, or your username. Each channel gets its
 own REPL session with its own variables and its own history. Channels are how
@@ -230,18 +230,18 @@ your own guard, and pass the subclass through the `controller` extra:
 
 ```ts
 import { Controller, UseGuards } from '@nestjs/common';
-import { WebReplController } from '@remote-repl/nestjs';
+import { RemoteReplController } from '@remote-repl/nestjs';
 import { AdminGuard } from './admin.guard';
 
 @Controller('internal/repl')
 @UseGuards(AdminGuard)
-class SecureReplController extends WebReplController {}
+class SecureReplController extends RemoteReplController {}
 ```
 
 ```ts
 @Module({
   imports: [
-    WebReplModule.register({
+    RemoteReplModule.register({
       enabled: process.env.REPL_ENABLED === 'true',
       controller: SecureReplController, // replaces the unguarded default controller
     }),
@@ -255,7 +255,7 @@ choice made at module definition time, so you pass it next to
 `useFactory`/`inject`, not inside the factory result:
 
 ```ts
-WebReplModule.registerAsync({
+RemoteReplModule.registerAsync({
   imports: [ConfigModule],
   inject: [ConfigService],
   useFactory: (config: ConfigService) => ({
@@ -270,7 +270,7 @@ WebReplModule.registerAsync({
 Put your middleware before the router in the same `app.use` call:
 
 ```ts
-app.use('/repl', requireAdmin, createReplRouter({ engine }));
+app.use('/repl', requireAdmin, createRemoteReplRouter({ engine }));
 ```
 
 The middleware runs in front of every route: the UI page, the SSE stream, the
@@ -338,16 +338,16 @@ The protocol is framework-agnostic. A NestJS instance and an Express instance
 can share one transport and one set of channels. The contract suite in
 `packages/nestjs/test/contract/` proves this on a real Redis.
 
-By default, the engine uses `InMemoryWebReplAdapter`, which only works inside
+By default, the engine uses `RemoteReplInMemoryTransport`, which only works inside
 one process. That is fine for local development and single-instance
 deployments. For real multi-instance deployments, provide a transport. In NestJS,
-use the `adapter` extra. Pass a ready instance, `{ useClass, imports }`, or
+use the `transport` extra. Pass a ready instance, `{ useClass, imports }`, or
 `{ useFactory, inject, imports }`. All three forms are DI-capable, so the
 transport can depend on other providers. In Express, pass it as `transport` to
-`createReplEngine`. A transport implements:
+`createRemoteReplEngine`. A transport implements:
 
 ```ts
-export interface WebReplAdapter {
+export interface RemoteReplTransport {
   publish(topic: string, message: string): Promise<void>;
   subscribe(topic: string, handler: (message: string) => void): Promise<void>;
   onModuleDestroy?(): void | Promise<void>;
@@ -377,12 +377,12 @@ yours.
 
 ```ts
 import Redis from 'ioredis';
-import { WebReplModule } from '@remote-repl/nestjs';
-import { IoRedisWebReplAdapter } from '@remote-repl/redis';
+import { RemoteReplModule } from '@remote-repl/nestjs';
+import { RemoteReplIoRedisTransport } from '@remote-repl/redis';
 
-WebReplModule.register({
+RemoteReplModule.register({
   enabled: process.env.REPL_ENABLED === 'true',
-  adapter: new IoRedisWebReplAdapter(new Redis(process.env.REDIS_URL!)),
+  transport: new RemoteReplIoRedisTransport(new Redis(process.env.REDIS_URL!)),
 });
 ```
 
@@ -390,16 +390,16 @@ WebReplModule.register({
 
 ```ts
 import { createClient } from 'redis';
-import { WebReplModule } from '@remote-repl/nestjs';
-import { NodeRedisWebReplAdapter } from '@remote-repl/redis';
+import { RemoteReplModule } from '@remote-repl/nestjs';
+import { RemoteReplNodeRedisTransport } from '@remote-repl/redis';
 
-WebReplModule.register({
+RemoteReplModule.register({
   enabled: process.env.REPL_ENABLED === 'true',
-  adapter: {
+  transport: {
     useFactory: async () => {
       const client = createClient({ url: process.env.REDIS_URL });
       await client.connect();
-      return new NodeRedisWebReplAdapter(client);
+      return new RemoteReplNodeRedisTransport(client);
     },
   },
 });
@@ -408,9 +408,9 @@ WebReplModule.register({
 **Express:**
 
 ```ts
-const engine = createReplEngine({
+const engine = createRemoteReplEngine({
   options: { enabled },
-  transport: new IoRedisWebReplAdapter(new Redis(process.env.REDIS_URL!)),
+  transport: new RemoteReplIoRedisTransport(new Redis(process.env.REDIS_URL!)),
   context: { catService },
 });
 ```
@@ -425,8 +425,8 @@ replicas, apps with different prefixes never see each other. The default is no
 prefix, which keeps the current topic names byte for byte.
 
 ```ts
-new IoRedisWebReplAdapter(client, { prefix: 'billing-api:' });
-new NodeRedisWebReplAdapter(client, { prefix: 'billing-api:' });
+new RemoteReplIoRedisTransport(client, { prefix: 'billing-api:' });
+new RemoteReplNodeRedisTransport(client, { prefix: 'billing-api:' });
 ```
 
 **Logging.** A handler that throws on an inbound message (for example malformed
@@ -436,13 +436,13 @@ The transport reports it. By default it reports through `console.error`. Pass a
 Nest `Logger`:
 
 ```ts
-new IoRedisWebReplAdapter(client, { prefix: 'billing-api:', logger: new Logger('WebRepl') });
+new RemoteReplIoRedisTransport(client, { prefix: 'billing-api:', logger: new Logger('WebRepl') });
 ```
 
 `ioredis` and `redis` are optional peer dependencies of `@remote-repl/redis`.
 Install the one that you use. Both transports extend a small shared base. To
-target another broker, subclass `BaseRedisWebReplAdapter` or implement
-`WebReplAdapter` directly.
+target another broker, subclass `RemoteReplBaseRedisTransport` or implement
+`RemoteReplTransport` directly.
 
 ## Protocol
 
@@ -464,9 +464,9 @@ hard-to-reverse decisions.
 
 ## Options
 
-The engine options are the same for every adapter. In NestJS, pass them to
+The engine options are the same for every transport. In NestJS, pass them to
 `register`/`registerAsync`. In Express, pass them as `options` to
-`createReplEngine`.
+`createRemoteReplEngine`.
 
 | Option              | Type             | Default                    | Notes                                              |
 | ------------------- | ---------------- | --------------------------- | --------------------------------------------------- |
@@ -482,7 +482,7 @@ The engine options are the same for every adapter. In NestJS, pass them to
 independent mechanisms. The first keeps a browser connection open. The second
 keeps an ownership lease alive between instances.
 
-### NestJS extras (`WebReplModuleOptions`)
+### NestJS extras (`RemoteReplModuleOptions`)
 
 `register`/`registerAsync` also accept two "extras". You pass them next to the
 options above, or next to `useFactory`/`inject`/`imports` for the async form, not
@@ -490,42 +490,42 @@ inside them. Both are static choices made at module definition time:
 
 | Extra        | Type                  | Default              | Notes                                              |
 | ------------ | --------------------- | --------------------- | --------------------------------------------------- |
-| `controller` | `Type<WebReplController>` | built-in `WebReplController` | Bring your own controller (subclass + guards). See [Securing it](#securing-it). |
-| `adapter`    | `WebReplAdapter \| Type<WebReplAdapter> \| { useClass, imports? } \| { useFactory, inject?, imports? }` | `InMemoryWebReplAdapter` | Multi-instance coordination. See [Transport / multi-instance](#transport--multi-instance). |
+| `controller` | `Type<RemoteReplController>` | built-in `RemoteReplController` | Bring your own controller (subclass + guards). See [Securing it](#securing-it). |
+| `transport`    | `RemoteReplTransport \| Type<RemoteReplTransport> \| { useClass, imports? } \| { useFactory, inject?, imports? }` | `RemoteReplInMemoryTransport` | Multi-instance coordination. See [Transport / multi-instance](#transport--multi-instance). |
 
-`WebReplModule.registerAsync({ useFactory, inject, imports, controller?, adapter? })`
+`RemoteReplModule.registerAsync({ useFactory, inject, imports, controller?, transport? })`
 is available for options that need DI, for example to read a `ConfigService`.
 
-### Express factory (`createReplEngine`)
+### Express factory (`createRemoteReplEngine`)
 
 | Argument       | Type                              | Notes                                                     |
 | -------------- | --------------------------------- | --------------------------------------------------------- |
-| `options`      | `WebReplOptions`                  | The engine options above.                                 |
-| `transport`    | `WebReplAdapter`                  | `InMemoryWebReplAdapter` or a Redis transport.            |
+| `options`      | `RemoteReplOptions`                  | The engine options above.                                 |
+| `transport`    | `RemoteReplTransport`                  | `RemoteReplInMemoryTransport` or a Redis transport.            |
 | `context`      | `object`                          | The globals of every session (shallow copy per session). Exactly one of `context` / `buildContext`. |
 | `buildContext` | `() => object`                    | Called once per session, synchronously; returns the plain object that becomes the session's globals (no Promise). |
 | `logger`       | `{ warn, error }`                 | Default `console`.                                        |
 
 ## Exports
 
-**`@remote-repl/nestjs`** (and the `nestjs-web-repl` shim): `WebReplModule`,
-`WebReplController`, `WebReplService`, `InMemoryWebReplAdapter`, and
-`WEB_REPL_OPTIONS`. `WEB_REPL_OPTIONS` is the DI token for the resolved options.
+**`@remote-repl/nestjs`** (and the `nestjs-web-repl` shim): `RemoteReplModule`,
+`RemoteReplController`, `RemoteReplService`, `RemoteReplInMemoryTransport`, and
+`REMOTE_REPL_OPTIONS`. `REMOTE_REPL_OPTIONS` is the DI token for the resolved options.
 Use it to inject the options into a controller subclass that you register next
-to the module. The package also exports the types `WebReplAdapter`,
-`WebReplModuleOptions`, `WebReplModuleExtras`, `WebReplAdapterConfig`,
-`WebReplEvent`, and `SseEventType`.
+to the module. The package also exports the types `RemoteReplTransport`,
+`RemoteReplModuleOptions`, `RemoteReplModuleExtras`, `RemoteReplTransportConfig`,
+`RemoteReplEvent`, and `RemoteReplSseEventType`.
 
-**`@remote-repl/express`**: `createReplEngine` and `createReplRouter`.
+**`@remote-repl/express`**: `createRemoteReplEngine` and `createRemoteReplRouter`.
 
-**`@remote-repl/redis`** (and `nestjs-web-repl/redis`): `IoRedisWebReplAdapter`,
-`NodeRedisWebReplAdapter`, `BaseRedisWebReplAdapter`, and the type
-`RedisWebReplAdapterOptions`.
+**`@remote-repl/redis`** (and `nestjs-web-repl/redis`): `RemoteReplIoRedisTransport`,
+`RemoteReplNodeRedisTransport`, `RemoteReplBaseRedisTransport`, and the type
+`RemoteReplRedisTransportOptions`.
 
-**`@remote-repl/core`**: `RemoteReplEngine`, `createReplHandlers`,
-`InMemoryWebReplAdapter`, `ReplDisabledError`, `InvalidCommandError`, the SSE
+**`@remote-repl/core`**: `RemoteReplEngine`, `createRemoteReplHandlers`,
+`RemoteReplInMemoryTransport`, `RemoteReplDisabledError`, `RemoteReplInvalidCommandError`, the SSE
 helpers, and the protocol types. You need it directly only to write a new
-framework adapter: wire the five handlers to the routes of your framework and
+framework package: wire the five handlers to the routes of your framework and
 map the two errors to 404 and 400.
 
 ## Runtime support
@@ -580,7 +580,7 @@ the skill after a package upgrade.
   fleet-wide. This is better than a permanent stuck channel, but it is still a
   data loss on unclean owner death. Like last-claim-wins above, it is a narrow
   multi-instance edge case.
-- **The NestJS adapter relies on a deep import of `@nestjs/core` internals**
+- **The NestJS package relies on a deep import of `@nestjs/core` internals**
   (`@nestjs/core/nest-application-context`, `@nestjs/core/repl/repl-context`) to
   build an app-wide REPL context. Only the `repl()` bootstrap function itself is
   part of the public entrypoint of `@nestjs/core`. The peer range of the package
@@ -600,7 +600,7 @@ The flow has three steps:
 3. On merge of that PR, the workflow publishes the bumped packages to npm.
 
 `@remote-repl/nestjs` and `nestjs-web-repl` are a fixed group: they always get
-the same version, so the shim never lags the adapter. A change to
+the same version, so the shim never lags the transport. A change to
 `@remote-repl/core` bumps every package that depends on it. Never hand-edit a
 `version` field or create a release tag by hand. Write the PR title as a
 [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`,

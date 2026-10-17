@@ -1,12 +1,12 @@
 import Redis from 'ioredis';
 import { createClient } from 'redis';
-import type { WebReplAdapter } from '@remote-repl/core';
-import { IoRedisWebReplAdapter, NodeRedisWebReplAdapter } from '@remote-repl/redis';
+import type { RemoteReplTransport } from '@remote-repl/core';
+import { RemoteReplIoRedisTransport, RemoteReplNodeRedisTransport } from '@remote-repl/redis';
 import { REDIS_URL } from './harness';
 
 /**
- * A transport under contract: builds a fresh adapter (one publisher client it
- * owns) against the real Redis. `close` quits that publisher; the adapter
+ * A transport under contract: builds a fresh transport (one publisher client it
+ * owns) against the real Redis. `close` quits that publisher; the transport
  * itself quits its own subscriber when the host app shuts down.
  */
 export interface TransportOptions {
@@ -16,7 +16,7 @@ export interface TransportOptions {
 
 export interface Transport {
   name: string;
-  make(options?: TransportOptions): Promise<{ adapter: WebReplAdapter; close(): Promise<void> }>;
+  make(options?: TransportOptions): Promise<{ transport: RemoteReplTransport; close(): Promise<void> }>;
 }
 
 export const transports: Transport[] = [
@@ -26,7 +26,7 @@ export const transports: Transport[] = [
       const client = new Redis(REDIS_URL, { lazyConnect: true });
       await client.connect();
       return {
-        adapter: new IoRedisWebReplAdapter(client, options),
+        transport: new RemoteReplIoRedisTransport(client, options),
         close: async () => {
           await client.quit();
         },
@@ -39,7 +39,7 @@ export const transports: Transport[] = [
       const client = createClient({ url: REDIS_URL });
       await client.connect();
       return {
-        adapter: new NodeRedisWebReplAdapter(client, options),
+        transport: new RemoteReplNodeRedisTransport(client, options),
         close: async () => {
           await client.quit();
         },

@@ -1,4 +1,4 @@
-import type { NodeRedisLike } from '../../src/node-redis-web-repl.adapter';
+import type { RemoteReplNodeRedisLike } from '../../src/node-redis.transport';
 
 type Listener = (message: string, channel: string) => void;
 
@@ -28,7 +28,7 @@ export class FakeRedisBus {
 }
 
 /** node-redis v4-shaped fake client bound to a bus. */
-export class FakeNodeRedis implements NodeRedisLike {
+export class FakeNodeRedis implements RemoteReplNodeRedisLike {
   connected = false;
   quitCalled = false;
   quitCount = 0;

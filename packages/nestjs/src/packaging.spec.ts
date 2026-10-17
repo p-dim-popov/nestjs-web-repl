@@ -109,7 +109,7 @@ describe('agent skills (skills.sh layout)', () => {
 
   it('the NestJS skill documents register(), the shim and the redis prefix', () => {
     const body = skill('nestjs-web-repl');
-    expect(body).toContain('WebReplModule.register(');
+    expect(body).toContain('RemoteReplModule.register(');
     expect(body).not.toContain('forRoot');
     expect(body).toContain('@remote-repl/nestjs');
     expect(body).toContain('nestjs-web-repl/redis');
@@ -120,8 +120,8 @@ describe('agent skills (skills.sh layout)', () => {
   it('the Express skill documents the engine + router API and the lifecycle', () => {
     const body = skill('remote-repl-express');
     expect(body).toContain('@remote-repl/express');
-    expect(body).toContain('createReplEngine(');
-    expect(body).toContain('createReplRouter(');
+    expect(body).toContain('createRemoteReplEngine(');
+    expect(body).toContain('createRemoteReplRouter(');
     expect(body).toContain('engine.start()');
     expect(body).toContain('engine.stop()');
     expect(body).toContain('prefix');

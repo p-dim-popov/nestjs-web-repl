@@ -1,15 +1,24 @@
-export { WebReplModule } from './web-repl.module';
-export { WebReplController } from './web-repl.controller';
-export { WebReplService } from './web-repl.service';
-export { InMemoryWebReplAdapter } from '@remote-repl/core';
-export { WEB_REPL_OPTIONS } from './constants';
-export type { WebReplAdapter } from '@remote-repl/core';
+export { RemoteReplModule } from './remote-repl.module';
+export { RemoteReplController } from './remote-repl.controller';
+export { RemoteReplService } from './remote-repl.service';
+export { RemoteReplInMemoryTransport } from '@remote-repl/core';
+export { REMOTE_REPL_OPTIONS } from './constants';
+export type { RemoteReplTransport } from '@remote-repl/core';
 export type {
-  WebReplModuleOptions,
-  WebReplModuleExtras,
-  WebReplAdapterConfig,
-} from './interfaces/web-repl-options.interface';
+  RemoteReplModuleOptions,
+  RemoteReplModuleExtras,
+  RemoteReplTransportConfig,
+} from './interfaces/remote-repl-options.interface';
 export type {
-  WebReplEvent,
-  SseEventType,
+  RemoteReplEvent,
+  RemoteReplSseEventType,
 } from '@remote-repl/core';
+
+// Transitional aliases (ticket #36, migrate phase): the shim still resolves
+// the legacy names through this barrel until it owns them. Removed in the
+// contract step.
+export { RemoteReplModule as WebReplModule } from './remote-repl.module';
+export { RemoteReplController as WebReplController } from './remote-repl.controller';
+export { RemoteReplService as WebReplService } from './remote-repl.service';
+export { RemoteReplInMemoryTransport as InMemoryWebReplAdapter } from '@remote-repl/core';
+export { REMOTE_REPL_OPTIONS as WEB_REPL_OPTIONS } from './constants';

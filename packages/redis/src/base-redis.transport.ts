@@ -1,4 +1,4 @@
-import type { WebReplAdapter } from '@remote-repl/core';
+import type { RemoteReplTransport } from '@remote-repl/core';
 
 type Handler = (message: string) => void;
 
@@ -6,12 +6,12 @@ type Handler = (message: string) => void;
  * Minimal logger surface the transports report through. Any object with
  * `warn`/`error` fits: `console`, a Nest `Logger`, pino, a custom sink.
  */
-export interface RedisWebReplLogger {
+export interface RemoteReplRedisLogger {
   warn(message: string): void;
   error(message: string): void;
 }
 
-export interface RedisWebReplAdapterOptions {
+export interface RemoteReplRedisTransportOptions {
   /**
    * Prepended verbatim to every topic name on the wire (e.g. `'my-app:'`), so
    * two apps sharing one Redis never exchange REPL output or ownership.
@@ -22,7 +22,7 @@ export interface RedisWebReplAdapterOptions {
    * Where handler faults are reported. Default: `console` -- a fault is never
    * silently swallowed, and the package carries no framework logger.
    */
-  logger?: RedisWebReplLogger;
+  logger?: RemoteReplRedisLogger;
 }
 
 /**
@@ -31,13 +31,13 @@ export interface RedisWebReplAdapterOptions {
  * The abstract hooks and `dispatch` speak WIRE topic names (prefix applied);
  * the public `publish`/`subscribe` speak the engine's bare names.
  */
-export abstract class BaseRedisWebReplAdapter implements WebReplAdapter {
+export abstract class RemoteReplBaseRedisTransport implements RemoteReplTransport {
   private readonly handlers = new Map<string, Set<Handler>>();
   private readonly subscribed = new Set<string>();
-  private readonly logger: RedisWebReplLogger;
+  private readonly logger: RemoteReplRedisLogger;
   private readonly prefix: string;
 
-  constructor(options: RedisWebReplAdapterOptions = {}) {
+  constructor(options: RemoteReplRedisTransportOptions = {}) {
     this.prefix = options.prefix ?? '';
     this.logger = options.logger ?? console;
   }
@@ -73,13 +73,13 @@ export abstract class BaseRedisWebReplAdapter implements WebReplAdapter {
         // channel) must not escape into the client's message emitter and crash
         // the process, nor abort delivery to the remaining handlers.
         this.logger.error(
-          `[${this.constructor.name}] web-repl adapter handler for "${topic}" threw: ${String(err)}`,
+          `[${this.constructor.name}] remote-repl transport handler for "${topic}" threw: ${String(err)}`,
         );
       }
     }
   }
 
-  async onModuleDestroy(): Promise<void> {
+  async close(): Promise<void> {
     await this.teardown();
     this.handlers.clear();
     this.subscribed.clear();

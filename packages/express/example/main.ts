@@ -1,6 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
-import { InMemoryWebReplAdapter } from '@remote-repl/core';
-import { createReplEngine, createReplRouter } from '../src';
+import { RemoteReplInMemoryTransport } from '@remote-repl/core';
+import { createRemoteReplEngine, createRemoteReplRouter } from '../src';
 import { CatService } from './cat.service';
 
 // Off by default: the REPL executes arbitrary code, so it must be opted into
@@ -24,9 +24,9 @@ function requireReplToken(req: Request, res: Response, next: NextFunction): void
 
 async function bootstrap(): Promise<void> {
   const catService = new CatService();
-  const engine = createReplEngine({
+  const engine = createRemoteReplEngine({
     options: { enabled, instanceId: process.env.INSTANCE_ID },
-    transport: new InMemoryWebReplAdapter(),
+    transport: new RemoteReplInMemoryTransport(),
     // What every REPL session sees as globals.
     context: { catService },
   });
@@ -36,7 +36,7 @@ async function bootstrap(): Promise<void> {
   app.get('/', (_req, res) => {
     res.type('text/plain').send('express example up; the REPL lives under /repl');
   });
-  app.use('/repl', requireReplToken, createReplRouter({ engine })); // 404s everything when the engine is disabled
+  app.use('/repl', requireReplToken, createRemoteReplRouter({ engine })); // 404s everything when the engine is disabled
 
   const server = app.listen(port, () => {
     // eslint-disable-next-line no-console

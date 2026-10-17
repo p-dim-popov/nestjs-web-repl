@@ -1,6 +1,6 @@
 ---
 name: remote-repl-express
-description: Use when wiring a live, in-process REPL into an Express app over HTTP via @remote-repl/express — creating the engine with createReplEngine, mounting createReplRouter under a base path, supplying the REPL context, gating the REPL behind an environment flag, putting auth middleware in front, choosing the Redis transport for multiple instances, or calling/debugging its POST command, SSE stream, or browser-UI routes.
+description: Use when wiring a live, in-process REPL into an Express app over HTTP via @remote-repl/express — creating the engine with createRemoteReplEngine, mounting createRemoteReplRouter under a base path, supplying the REPL context, gating the REPL behind an environment flag, putting auth middleware in front, choosing the Redis transport for multiple instances, or calling/debugging its POST command, SSE stream, or browser-UI routes.
 ---
 
 # remote-repl-express
@@ -9,16 +9,16 @@ description: Use when wiring a live, in-process REPL into an Express app over HT
 
 `@remote-repl/express` exposes a live Node.js REPL running inside an Express
 app over HTTP: a POST command endpoint, a Server-Sent Events output stream, and
-a Monaco browser UI. It is the Express adapter over the framework-free engine
-in `@remote-repl/core`; the NestJS adapter (`@remote-repl/nestjs`) speaks the
+a Monaco browser UI. It is the Express package over the framework-free engine
+in `@remote-repl/core`; the NestJS package (`@remote-repl/nestjs`) speaks the
 same protocol, so a NestJS replica and an Express replica can share one Redis.
 
 Two exports:
 
 | Export                                   | Purpose                                                                 |
 | ---------------------------------------- | ----------------------------------------------------------------------- |
-| `createReplEngine({ options, transport, context \| buildContext, logger? })` | Builds the `RemoteReplEngine`. The caller owns `start()` / `stop()`.     |
-| `createReplRouter({ engine })`           | An Express `Router` with the five routes; mount it wherever you want the base path. It reads `enabled` from the engine. |
+| `createRemoteReplEngine({ options, transport, context \| buildContext, logger? })` | Builds the `RemoteReplEngine`. The caller owns `start()` / `stop()`.     |
+| `createRemoteReplRouter({ engine })`           | An Express `Router` with the five routes; mount it wherever you want the base path. It reads `enabled` from the engine. |
 
 ## When to use this skill
 
@@ -37,7 +37,7 @@ router:
 
 - Gate it behind an environment flag so it is OFF by default:
   `const enabled = process.env.REPL_ENABLED === 'true'`, and pass it to
-  `createReplEngine` in `options`. The router derives its own 404 gate from
+  `createRemoteReplEngine` in `options`. The router derives its own 404 gate from
   `engine.enabled`; there is no second flag to keep in step.
 - Never enable it in production without your own authentication or network
   restriction in front of the routes. Put your auth middleware **before** the
@@ -49,20 +49,20 @@ router:
 
 ```ts
 import express from 'express';
-import { InMemoryWebReplAdapter } from '@remote-repl/core';
-import { createReplEngine, createReplRouter } from '@remote-repl/express';
+import { RemoteReplInMemoryTransport } from '@remote-repl/core';
+import { createRemoteReplEngine, createRemoteReplRouter } from '@remote-repl/express';
 
 const enabled = process.env.REPL_ENABLED === 'true';
 
-const engine = createReplEngine({
+const engine = createRemoteReplEngine({
   options: { enabled },
-  transport: new InMemoryWebReplAdapter(), // one process; see Redis below
+  transport: new RemoteReplInMemoryTransport(), // one process; see Redis below
   context: { db, userService },            // the globals every session sees
 });
 await engine.start(); // no-op when disabled
 
 const app = express();
-app.use('/repl', requireAdmin, createReplRouter({ engine }));
+app.use('/repl', requireAdmin, createRemoteReplRouter({ engine }));
 //          ^ mount path = base path      ^ your auth middleware, in front
 
 const server = app.listen(3000);
@@ -117,22 +117,22 @@ requests — a cookie/session, or a query token as in the package example).
 
 - **Multiple app instances** (load-balanced replicas): the in-memory transport
   is per-process. Install `@remote-repl/redis` and pass
-  `transport: new IoRedisWebReplAdapter(client)` (ioredis) or
-  `new NodeRedisWebReplAdapter(client)` (node-redis) to `createReplEngine`.
+  `transport: new RemoteReplIoRedisTransport(client)` (ioredis) or
+  `new RemoteReplNodeRedisTransport(client)` (node-redis) to `createRemoteReplEngine`.
   Hand it one connected client; it owns its own subscriber connection.
   `ioredis` / `redis` are optional peers: install the one you use.
 - **Two apps on one Redis:** the topics have no origin check, so unrelated apps
   sharing a Redis would exchange REPL output and ownership. Give each app's
-  adapter its own topic `prefix` (second constructor argument):
-  `new IoRedisWebReplAdapter(client, { prefix: 'billing-api:' })`. Replicas of
+  transport its own topic `prefix` (second constructor argument):
+  `new RemoteReplIoRedisTransport(client, { prefix: 'billing-api:' })`. Replicas of
   one app must share the same prefix; apps with different prefixes never see
   each other. Default: no prefix.
 - **Options** (`instanceId`, `sessionTtl`, `replayBufferSize`,
   `heartbeatInterval`, `ownerHeartbeatInterval`, `ownerLeaseTtl`) are the
-  engine's `WebReplOptions` from `@remote-repl/core`; pass them in `options`.
+  engine's `RemoteReplOptions` from `@remote-repl/core`; pass them in `options`.
   See the repository README.
 - **Logging:** `logger` (an object with `warn` and `error`) on
-  `createReplEngine`; defaults to `console`.
+  `createRemoteReplEngine`; defaults to `console`.
 - **Runnable example:** `packages/express/example/main.ts` in the repository
   (`REPL_ENABLED=true npm run example:express`; demo bearer token `REPL_TOKEN`).
 

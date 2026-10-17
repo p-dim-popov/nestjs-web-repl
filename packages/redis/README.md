@@ -1,7 +1,7 @@
 # @remote-repl/redis
 
-The Redis transports for remote-repl: `IoRedisWebReplAdapter` (ioredis) and
-`NodeRedisWebReplAdapter` (node-redis). A transport lets several instances of
+The Redis transports for remote-repl: `RemoteReplIoRedisTransport` (ioredis) and
+`RemoteReplNodeRedisTransport` (node-redis). A transport lets several instances of
 one app share channels and ownership through one Redis pub/sub bus.
 
 ## Install
@@ -16,15 +16,15 @@ npm install @remote-repl/redis ioredis   # or: redis
 
 ```ts
 import Redis from 'ioredis';
-import { IoRedisWebReplAdapter } from '@remote-repl/redis';
+import { RemoteReplIoRedisTransport } from '@remote-repl/redis';
 
-const transport = new IoRedisWebReplAdapter(new Redis(process.env.REDIS_URL!), {
+const transport = new RemoteReplIoRedisTransport(new Redis(process.env.REDIS_URL!), {
   prefix: 'billing-api:', // optional: isolates this app on a shared Redis
 });
 ```
 
-Pass the transport as the `adapter` extra of `WebReplModule.register` in
-NestJS, or as `transport` to `createReplEngine` in Express. The transport
+Pass the transport as the `transport` extra of `RemoteReplModule.register` in
+NestJS, or as `transport` to `createRemoteReplEngine` in Express. The transport
 opens its own subscriber connection and closes only that one on shutdown.
 
 Two apps on one Redis must use different prefixes. Replicas of one app must

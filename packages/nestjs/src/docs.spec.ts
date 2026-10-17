@@ -56,9 +56,9 @@ describe('README.md', () => {
     expect(readme).toContain(`\`${name}\``);
   });
 
-  it('gives the Express quick start with createReplEngine + createReplRouter', () => {
-    expect(readme).toContain('createReplEngine(');
-    expect(readme).toContain('createReplRouter(');
+  it('gives the Express quick start with createRemoteReplEngine + createRemoteReplRouter', () => {
+    expect(readme).toContain('createRemoteReplEngine(');
+    expect(readme).toContain('createRemoteReplRouter(');
   });
 
   it('uses the same skills.sh install commands as the skills', () => {
@@ -79,7 +79,7 @@ describe('GLOSSARY.md', () => {
     'Engine',
     'Channel',
     'Transport',
-    'Framework adapter',
+    'Framework package',
     'Shared handler layer',
     'Lease',
     'Claim',
