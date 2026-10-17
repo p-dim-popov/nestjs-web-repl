@@ -6,9 +6,17 @@ agent, read this before making changes.
 
 ## What this project is
 
-`nestjs-web-repl` is a library that exposes a live NestJS REPL over HTTP: a
+The `@remote-repl` package family exposes a live, in-process REPL over HTTP: a
 `POST` command endpoint, an SSE output stream, and a Monaco-based browser UI,
-backed by real `@nestjs/core` REPL sessions running inside the host app.
+backed by real `node:repl` sessions running inside the host app. One
+framework-free engine (`@remote-repl/core`) speaks one wire protocol
+(`packages/core/PROTOCOL.md`); framework adapters (`@remote-repl/nestjs`,
+`@remote-repl/express`) do the HTTP wiring; transports (`@remote-repl/redis`)
+carry the protocol between instances; the legacy `nestjs-web-repl` name is a
+re-export shim. The shared vocabulary (engine, channel, transport, framework
+adapter, lease, claim/release, topic prefix, shim, …) is defined in
+`GLOSSARY.md`; the hard-to-reverse decisions behind the split are in
+`docs/adr/`. Use the glossary's terms in code, tests and issues.
 **The endpoints execute arbitrary code by design.** Treat every change through
 that lens — see "Security invariants" below.
 
@@ -66,10 +74,19 @@ complete.
 ## Project layout
 
 Root: `package.json` (private workspace root; also owns the semantic-release
-devDependencies and `.releaserc.json`), `.github/workflows/`, `README.md`,
-`CHANGELOG.md`, `CONTRIBUTING.md`, `docs/`, and `examples/stackblitz/` (a
-standalone demo against the published package, not a workspace). Packages
-live under `packages/`:
+devDependencies and `.releaserc.json`), `.github/workflows/`, `README.md`
+(the full consumer documentation for every package; each package also has a
+short `README.md` that links back to it), `CHANGELOG.md`, `CONTRIBUTING.md`,
+`GLOSSARY.md` (the ubiquitous language), `docs/adr/` (architecture decision
+records: `0001` separate packages over subpath exports, `0002` no rxjs in
+core, `0003` no wire protocol version), `docs/agents/` (agent workflow
+notes), `skills/` (consumer-facing agent skills, see below) and
+`examples/stackblitz/` (a standalone demo against the published package, not
+a workspace). `packages/nestjs/src/docs.spec.ts` checks that every path
+`README.md`, `AGENTS.md` and `CONTRIBUTING.md` reference exists, that
+`GLOSSARY.md` defines the core terms and that the ADRs have Context /
+Decision / Consequences — when you move a file, fix the docs in the same
+change or that spec goes red. Packages live under `packages/`:
 
 - `packages/core/` — `@remote-repl/core` (private until the per-package
   release design lands): everything with NO framework dependency. Its
@@ -302,15 +319,23 @@ live under `packages/`:
 
 ## Security invariants (do not regress these)
 
-1. **`enabled` is enforced at runtime**, not just at registration. A disabled
-   module must not subscribe to the adapter and must 404 on every route — via
-   both `register` and `registerAsync` in NestJS, and via `createReplRouter`
-   AND the engine's own `start()` guard in Express. Every framework adapter
-   replicates this. This is the product's only built-in safety rail; treating
-   it as advisory-only is a critical bug.
+1. **`enabled` is enforced at runtime**, not just at registration, and at
+   EVERY layer: the engine (`start()` subscribes to nothing and `dispatch()`
+   / `events()` / `openStream()` throw `ReplDisabledError` when disabled), the
+   shared handler layer (every handler reads the live options object on each
+   call and throws `ReplDisabledError`), and every framework adapter (maps
+   `ReplDisabledError` to its own 404 — via both `register` and
+   `registerAsync` in NestJS, via `createReplRouter` in Express). A new
+   framework adapter MUST replicate the 404 mapping on all five routes and
+   MUST pass the engine the same `enabled` value; the e2e/HTTP suites of each
+   adapter cover it. This is the product's only built-in safety rail;
+   treating it as advisory-only is a critical bug.
 2. **The UI escapes the channel name** for the `<script>` context (`<`
    escaping) and uses `encodeURIComponent` for URLs. SSE payloads render via
-   `textContent`, never `innerHTML`.
+   `textContent`, never `innerHTML`. The escaping and the Monaco asset
+   path-traversal guard live once, in core (`src/ui/`), and every adapter
+   serves the UI and the assets through the shared handlers — never
+   re-implement either in an adapter.
 3. The library ships **no authentication** — that is intentional and the user's
    responsibility. Do not add auth that pretends to be complete; do keep the
    security warnings in `README.md` accurate.
@@ -325,8 +350,9 @@ live under `packages/`:
   multi-line support and top-level `await` if you change this file.
 - **Deep imports**: `@nestjs/core/repl/repl-context` and
   `@nestjs/core/nest-application-context` are not public API. They are isolated
-  to `src/context/build-repl-context.ts` and covered by an execution-proof
-  test. If a `@nestjs/core` major bump breaks them, fix them here.
+  to `packages/nestjs/src/context/build-repl-context.ts` (never in core) and
+  covered by an execution-proof test. If a `@nestjs/core` major bump breaks
+  them, fix them here.
 - **Per-channel serialization** (`packages/core/src/engine/remote-repl-engine.ts`):
   output is tagged with the currently executing
   command; commands on a channel run serially. Don't reintroduce a shared
