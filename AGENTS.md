@@ -65,14 +65,15 @@ complete.
 
 ## Project layout
 
-Root: `package.json` (private workspace root; also owns the semantic-release
-devDependencies and `.releaserc.json`), `.github/workflows/`, `README.md`,
-`CHANGELOG.md`, `CONTRIBUTING.md`, `docs/`, and `examples/stackblitz/` (a
+Root: `package.json` (private workspace root; also owns the `@changesets/cli`
+devDependency and the `changeset:*` scripts), `.changeset/` (config + pending
+changesets), `.github/workflows/`, `README.md`, `CHANGELOG.md` (pre-split
+history only; per-package `CHANGELOG.md` files are generated from here on),
+`CONTRIBUTING.md`, `docs/`, and `examples/stackblitz/` (a
 standalone demo against the published package, not a workspace). Packages
 live under `packages/`:
 
-- `packages/core/` — `@remote-repl/core` (private until the per-package
-  release design lands): everything with NO framework dependency. Its
+- `packages/core/` — `@remote-repl/core`: everything with NO framework dependency. Its
   `package.json` has zero `@nestjs/*`, express, redis/ioredis or rxjs
   dependencies (pinned by `src/package-boundary.spec.ts`). No decorators, so
   its `vitest.config.ts` needs neither swc nor `reflect-metadata`. Consumers
@@ -137,8 +138,7 @@ live under `packages/`:
     also greps core's sources for `@nestjs/*`, express or rxjs imports.
   - `scripts/copy-monaco.mjs` — build step. Finds `monaco-editor` through
     Node's resolver (`createRequire`), never a hardcoded `node_modules` path.
-- `packages/redis/` — `@remote-repl/redis` (private until the per-package
-  release design lands): the Redis transports. Depends on `@remote-repl/core`
+- `packages/redis/` — `@remote-repl/redis`: the Redis transports. Depends on `@remote-repl/core`
   (the `WebReplAdapter` interface) and nothing else; `ioredis` and `redis` are
   OPTIONAL peers (pinned by `src/package-boundary.spec.ts`, which also
   forbids `@nestjs/*`, express, rxjs). No decorators, no swc, no
@@ -157,8 +157,7 @@ live under `packages/`:
     the two clients, each behind a structural `*Like` interface (no client
     import at runtime). `test/fakes/fake-node-redis.ts` — the node-redis fake
     used by the unit spec; the ioredis spec uses `ioredis-mock`.
-- `packages/express/` — `@remote-repl/express` (private until the per-package
-  release design lands): the Express adapter, thin wiring of core's
+- `packages/express/` — `@remote-repl/express`: the Express adapter, thin wiring of core's
   `createReplHandlers` onto an Express `Router`. Depends on `@remote-repl/core`
   and nothing else; `express` (`^4.16 || ^5`) is a PEER (pinned by
   `src/package-boundary.spec.ts`, which also forbids `@nestjs/*`, rxjs, redis
@@ -187,8 +186,7 @@ live under `packages/`:
     disabled engine subscribes to nothing, auth middleware in front → 401).
   - `example/main.ts` — runnable host app: `REPL_ENABLED` (default off),
     bearer-token middleware in front, `CatService` exposed via `context`.
-- `packages/nestjs/` — `@remote-repl/nestjs` (private until the per-package
-  release design lands), with its own `package.json`, `tsconfig*.json` and
+- `packages/nestjs/` — `@remote-repl/nestjs`, with its own `package.json`, `tsconfig*.json` and
   `vitest.config.ts`. The root `example` script addresses it by this name.
   The legacy unscoped `nestjs-web-repl` name is owned by the shim package
   below; nothing in this package imports it (the example and tests import
@@ -292,13 +290,21 @@ live under `packages/`:
 - The controller returns strings and RxJS `Observable`s only (no raw
   `req`/`res`) so it stays platform-agnostic across Express and Fastify.
 - Keep files focused and small; match existing style.
-- **Releases are automated** (semantic-release on merge to `main`). Never hand-
-  edit `package.json` `version` or create release tags manually. Write
-  Conventional Commit subjects (`feat:`, `fix:`, `feat!:` …) — they drive the
-  version bump. See "Releasing" in `README.md`. **Release automation is
-  currently off** for the `@remote-repl` monorepo split (#19): `release.yml`
-  and the `release-config` CI job are gated with `if: false`; #33 re-enables
-  releases per package.
+- **Releases are automated with changesets** (`.changeset/config.json`;
+  `release.yml` runs `changesets/action` on every push to `main`). Never
+  hand-edit a `package.json` `version`, a package `CHANGELOG.md`, or create
+  release tags manually. Commit messages no longer drive version bumps: every
+  user-visible change ships with a changeset file (`npx changeset`, or write
+  `.changeset/<name>.md` by hand) naming the affected packages and the bump
+  (`patch` / `minor` / `major`) with a short release note. Conventional
+  Commit subjects are still the house style, for readable history. On merge
+  to `main`, pending changesets become a "Version Packages" PR; merging that
+  PR publishes to npm. `@remote-repl/nestjs` and `nestjs-web-repl` are a
+  `fixed` group (always the same version; a changeset for one bumps both),
+  and `updateInternalDependencies: patch` rewrites the internal
+  `^<version>` ranges (the shim's lockstep pin is asserted by
+  `packages/nestjs-web-repl/src/packaging.spec.ts`). See "Contributing" in
+  `README.md`.
 
 ## Security invariants (do not regress these)
 

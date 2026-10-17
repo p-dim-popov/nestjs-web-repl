@@ -1,7 +1,6 @@
 {
   "name": "@remote-repl/redis",
   "version": "0.1.0",
-  "private": true,
   "description": "Redis pub/sub transports (ioredis, node-redis) for remote-repl, with optional topic prefix for tenancy on a shared Redis.",
   "license": "MIT",
   "main": "dist/index.js",
@@ -20,6 +19,9 @@
     "type": "git",
     "url": "git+https://github.com/p-dim-popov/nestjs-web-repl.git",
     "directory": "packages/redis"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=20"

@@ -449,15 +449,17 @@ PRs are fine. We only ask that you disclose the assistance and that you understa
 what you submit. Agents that work in this repo should start with
 [`AGENTS.md`](./AGENTS.md).
 
-PRs merge as a single squash commit. Its message is the **PR title and
-description**, and that commit drives an automated release. Write the PR title as a
+PRs merge as a single squash commit. Write the PR title as a
 [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
-`docs:`, and so on) so that the version bump is correct. Put any `BREAKING CHANGE:`
-note in the description.
-
-The release pipeline is paused while the package is split into the
-`@remote-repl` monorepo (see issue #19): merges to `main` do not publish until
-the per-package release flow lands.
+`docs:`, and so on) for readable history. Version bumps are driven by
+[changesets](https://github.com/changesets/changesets), not by commit messages:
+a PR that changes what a package does must include a changeset file
+(`npx changeset`) that names the packages it touches, the bump
+(`patch` / `minor` / `major`) and a short release note. On merge to `main`, the
+release workflow collects pending changesets into a "Version Packages" PR;
+merging that PR publishes the bumped packages to npm and writes their
+`CHANGELOG.md` files. `nestjs-web-repl` always carries the same version as
+`@remote-repl/nestjs`.
 
 ## License
 

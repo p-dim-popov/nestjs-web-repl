@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 // `nestjs-web-repl` is the legacy package name, kept alive as a re-export
@@ -72,5 +72,56 @@ describe('nestjs-web-repl packaging', () => {
     expect(paths).toContain('LICENSE');
     expect(paths).toContain('package.json');
     expect(paths.some((p) => p.startsWith('src/') || p.startsWith('skill/'))).toBe(false);
+  });
+});
+
+// Releases are driven by changesets (`.changeset/config.json` at the workspace
+// root), not semantic-release. The shim and @remote-repl/nestjs sit in one
+// `fixed` group so `changeset version` always writes them the same version,
+// and every package is public so `changeset publish` can ship it.
+describe('release wiring (changesets)', () => {
+  const read = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
+  const repoRoot = join(process.cwd(), '..', '..');
+  const packagesDir = join(repoRoot, 'packages');
+  const manifests = readdirSync(packagesDir)
+    .map((d) => join(packagesDir, d, 'package.json'))
+    .filter((p) => existsSync(p))
+    .map(read);
+  const names = manifests.map((m) => m.name).sort();
+  const config = () => read(join(repoRoot, '.changeset', 'config.json'));
+
+  it('has all five workspace packages', () => {
+    expect(names).toEqual([
+      '@remote-repl/core',
+      '@remote-repl/express',
+      '@remote-repl/nestjs',
+      '@remote-repl/redis',
+      'nestjs-web-repl',
+    ]);
+  });
+
+  it('ties the shim and @remote-repl/nestjs in a changesets fixed group', () => {
+    expect(config().fixed).toEqual([['@remote-repl/nestjs', 'nestjs-web-repl']]);
+  });
+
+  it('publishes every package publicly from the main branch', () => {
+    expect(config().access).toBe('public');
+    expect(config().baseBranch).toBe('main');
+    expect(config().updateInternalDependencies).toBe('patch');
+    expect(config().ignore ?? []).toEqual([]);
+    for (const m of manifests) {
+      expect(m.private, m.name).toBeUndefined();
+      expect(m.publishConfig?.access, m.name).toBe('public');
+    }
+  });
+
+  it('has no semantic-release config or dependencies left at the root', () => {
+    const rootPkg = read(join(repoRoot, 'package.json'));
+    const devDeps = Object.keys(rootPkg.devDependencies ?? {});
+    expect(devDeps.some((d) => d.includes('semantic-release'))).toBe(false);
+    expect(devDeps).toContain('@changesets/cli');
+    expect(existsSync(join(repoRoot, '.releaserc.json'))).toBe(false);
+    expect(rootPkg.scripts['changeset:version']).toBeDefined();
+    expect(rootPkg.scripts['changeset:publish']).toBeDefined();
   });
 });

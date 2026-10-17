@@ -1,7 +1,6 @@
 {
   "name": "@remote-repl/nestjs",
   "version": "2.3.2",
-  "private": true,
   "description": "NestJS adapter for @remote-repl/core: WebReplModule, controller and DI-container context builder (HTTP + SSE + Monaco UI).",
   "keywords": [
     "nestjs",
