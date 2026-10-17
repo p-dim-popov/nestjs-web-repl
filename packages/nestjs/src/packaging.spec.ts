@@ -134,19 +134,18 @@ describe('agent skills (skills.sh layout)', () => {
 // the old slug in its released history; everything else is scanned.
 describe('repository slug', () => {
   const OLD_SLUG = ['p-dim-popov', 'nestjs-web-repl'].join('/');
-  const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
-  const walk = (dir: string, out: string[] = []): string[] => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) walk(full, out);
-      else if (entry.isFile()) out.push(full);
-    }
-    return out;
-  };
+  // Tracked files only: untracked or ignored local files (scratch dirs,
+  // build output) are not part of what ships, so they must not fail the gate.
+  const trackedFiles = (): string[] =>
+    execFileSync('git', ['ls-files', '-z'], { cwd: repoRoot })
+      .toString('utf8')
+      .split('\0')
+      .filter(Boolean)
+      .map((rel) => join(repoRoot, rel))
+      .filter((f) => existsSync(f));
 
-  it('no file outside the root CHANGELOG history references p-dim-popov/node-remote-repl', () => {
-    const offenders = walk(repoRoot)
+  it('no tracked file outside the root CHANGELOG history references the old slug', () => {
+    const offenders = trackedFiles()
       .filter((f) => f !== join(repoRoot, 'CHANGELOG.md'))
       .filter((f) => readFileSync(f, 'utf8').includes(OLD_SLUG))
       .map((f) => f.slice(repoRoot.length + 1));
