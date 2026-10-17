@@ -1,6 +1,6 @@
 import { sseFrameToText, toSseFrame } from './sse-frame';
 
-// A heartbeat frame (WebReplEvent with id: 0) must not clobber the browser
+// A heartbeat frame (RemoteReplEvent with id: 0) must not clobber the browser
 // EventSource's reconnection cursor. Omitting `id` is not an option either:
 // SSE servers (Nest's SseStream among them) auto-assign their own counter to
 // an id-less message, reproducing the "reconnect replays everything" bug

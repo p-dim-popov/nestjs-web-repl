@@ -3,7 +3,7 @@
 **Spec version: 1.0.0** (see [Versioning](#8-versioning)).
 
 This document is the language-neutral contract between every remote-repl
-implementation: the Node core in this repository, each framework adapter that
+implementation: the Node core in this repository, each framework package that
 embeds it, and any future implementation in another language. It defines what
 travels on the transport topics, what travels on the HTTP/SSE surface, and how
 a cluster of instances agrees on who executes a command. A developer who has
@@ -47,18 +47,18 @@ in-process event bus and Redis Pub/Sub both satisfy this contract.
 
 ### 1.2 Topics and the prefix convention
 
-Three fixed topic names (`Topic` in the schema):
+Three fixed topic names (`RemoteReplTopic` in the schema):
 
 | Topic         | Message type | Published by                    |
 |---------------|--------------|---------------------------------|
-| `webrepl:cmd` | `CmdMessage` | the origin of a command (§4.1)  |
-| `webrepl:out` | `OutMessage` | the owner of the channel (§4.3) |
-| `webrepl:sys` | `SysMessage` | the owner (claim/release) (§5)  |
+| `remote-repl:cmd` | `RemoteReplCmdMessage` | the origin of a command (§4.1)  |
+| `remote-repl:out` | `RemoteReplOutMessage` | the owner of the channel (§4.3) |
+| `remote-repl:sys` | `RemoteReplSysMessage` | the owner (claim/release) (§5)  |
 
 A transport MAY namespace a cluster by prepending a **prefix** string to every
 topic name it publishes and subscribes to. The prefix is concatenated as-is,
-with no separator inserted: prefix `app-a:` turns `webrepl:cmd` into
-`app-a:webrepl:cmd`. The engine never sees the prefix; it always publishes and
+with no separator inserted: prefix `app-a:` turns `remote-repl:cmd` into
+`app-a:remote-repl:cmd`. The engine never sees the prefix; it always publishes and
 subscribes with the bare names above. On receipt, a prefixed transport strips
 the prefix and drops any message whose wire topic does not start with it.
 Instances that use different prefixes on the same medium form separate
@@ -94,7 +94,7 @@ receiver MAY do either. A message that fails to parse is dropped.
 The authoritative shapes are in the schema; this section names them and fixes
 the semantics of each field.
 
-### 3.1 `CmdMessage` (topic `webrepl:cmd`)
+### 3.1 `RemoteReplCmdMessage` (topic `remote-repl:cmd`)
 
 ```json
 { "channel": "dev", "commandId": "cmd_1_ab12", "command": "1 + 1", "originInstanceId": "inst_a" }
@@ -107,16 +107,16 @@ the semantics of each field.
 | `command`          | string | the source text to evaluate, verbatim, non-empty        |
 | `originInstanceId` | string | the instance that received the HTTP request             |
 
-### 3.2 `OutMessage` (topic `webrepl:out`)
+### 3.2 `RemoteReplOutMessage` (topic `remote-repl:out`)
 
 ```json
 { "channel": "dev", "event": { "id": 2, "type": "output", "commandId": "cmd_1_ab12", "data": "2\n" } }
 ```
 
-`event` is a `TransportEvent` (§3.4). The schema names this exact wire shape
-`WireOutMessage` (`OutMessage<TransportEvent>`).
+`event` is a `RemoteReplTransportEvent` (§3.4). The schema names this exact wire shape
+`RemoteReplWireOutMessage` (`RemoteReplOutMessage<RemoteReplTransportEvent>`).
 
-### 3.3 `SysMessage` (topic `webrepl:sys`)
+### 3.3 `RemoteReplSysMessage` (topic `remote-repl:sys`)
 
 ```json
 { "channel": "dev", "kind": "claim", "instanceId": "inst_a" }
@@ -135,26 +135,26 @@ type* below.
 ### 3.4 Events
 
 An event is the unit of a channel's history. It is the `event` of an
-`OutMessage` and, serialized, the `data` line of an SSE frame (§6). Every
+`RemoteReplOutMessage` and, serialized, the `data` line of an SSE frame (§6). Every
 event has the envelope `{ id, type, commandId, data }`; `type` selects the
 shape of `data`:
 
 | Variant        | `type`      | `commandId`      | `data`                              | Emitted when                                               |
 |----------------|-------------|------------------|-------------------------------------|------------------------------------------------------------|
-| `CommandEvent` | `"command"` | string           | `{ "command": string, "instanceId": string }` | the owner is about to execute the command; `instanceId` is the owner |
-| `OutputEvent`  | `"output"`  | string or `null` | string: one raw chunk of REPL output, verbatim (includes the REPL's own formatting of the result and any console output) | the REPL writes output; tagged with the command executing at that moment, `null` only if none is |
-| `DoneEvent`    | `"system"`  | string           | `{ "done": true }`                  | once per executed command, after its last output chunk, even if it produced no output |
-| `ErrorEvent`   | `"system"`  | string           | `{ "error": string }`               | the command could not be executed at all (e.g. the session could not be created); the channel stays usable |
-| `PingEvent`    | `"system"`  | `null`           | `{ "ping": true }`                  | SSE keep-alive; **SSE-only**, see §6.4                     |
+| `RemoteReplCommandEvent` | `"command"` | string           | `{ "command": string, "instanceId": string }` | the owner is about to execute the command; `instanceId` is the owner |
+| `RemoteReplOutputEvent`  | `"output"`  | string or `null` | string: one raw chunk of REPL output, verbatim (includes the REPL's own formatting of the result and any console output) | the REPL writes output; tagged with the command executing at that moment, `null` only if none is |
+| `RemoteReplDoneEvent`    | `"system"`  | string           | `{ "done": true }`                  | once per executed command, after its last output chunk, even if it produced no output |
+| `RemoteReplErrorEvent`   | `"system"`  | string           | `{ "error": string }`               | the command could not be executed at all (e.g. the session could not be created); the channel stays usable |
+| `RemoteReplPingEvent`    | `"system"`  | `null`           | `{ "ping": true }`                  | SSE keep-alive; **SSE-only**, see §6.4                     |
 
-`TransportEvent` = `CommandEvent | OutputEvent | DoneEvent | ErrorEvent`: the
-events that travel on `webrepl:out` and are replayable.
-`SseEvent` = `TransportEvent | PingEvent`: everything a client can receive.
-A `PingEvent` MUST NOT be published on the transport or stored for replay.
+`RemoteReplTransportEvent` = `RemoteReplCommandEvent | RemoteReplOutputEvent | RemoteReplDoneEvent | RemoteReplErrorEvent`: the
+events that travel on `remote-repl:out` and are replayable.
+`RemoteReplSseEvent` = `RemoteReplTransportEvent | RemoteReplPingEvent`: everything a client can receive.
+A `RemoteReplPingEvent` MUST NOT be published on the transport or stored for replay.
 
 A command that throws inside the REPL is a *successful execution* at this
 level: the thrown error is rendered by the REPL as `output` chunks, followed
-by `done`. `ErrorEvent` is reserved for failures to execute.
+by `done`. `RemoteReplErrorEvent` is reserved for failures to execute.
 
 ---
 
@@ -163,13 +163,13 @@ by `done`. `ErrorEvent` is reserved for failures to execute.
 ### 4.1 Dispatch
 
 On an accepted `POST` (§6.2) the origin mints a `commandId`, publishes a
-`CmdMessage` on `webrepl:cmd`, and returns the id to the HTTP client without
+`RemoteReplCmdMessage` on `remote-repl:cmd`, and returns the id to the HTTP client without
 waiting for execution. If the publish fails, the origin still returns the id;
 the failure is logged, not surfaced.
 
 ### 4.2 Who executes
 
-Every instance receives every `CmdMessage`. Each applies this decision, in
+Every instance receives every `RemoteReplCmdMessage`. Each applies this decision, in
 order, using only its local view (§5.1):
 
 1. If this instance is the recorded owner of `channel`: execute.
@@ -196,20 +196,20 @@ The executing instance:
    Commands on different channels are independent.
 4. When the command's turn comes: ensure a REPL session exists for the
    channel (one session per channel per owner; created on first use with the
-   host application's context), then publish, in this order, as `OutMessage`s:
-   - a `CommandEvent`;
-   - zero or more `OutputEvent`s as the session writes output, each tagged
+   host application's context), then publish, in this order, as `RemoteReplOutMessage`s:
+   - a `RemoteReplCommandEvent`;
+   - zero or more `RemoteReplOutputEvent`s as the session writes output, each tagged
      with this command's id;
-   - a `DoneEvent`.
+   - a `RemoteReplDoneEvent`.
 
    If step 4 fails before or during evaluation in a way the session does not
    itself report as output (for example the context factory throws), publish
-   an `ErrorEvent` with the command's id instead of `done`.
+   an `RemoteReplErrorEvent` with the command's id instead of `done`.
 5. Clears *pending* once the `done`/`error` event has been published.
 
 The owner does **not** write events into its own replay buffer or SSE streams
 directly. Like every other instance, it processes them when they arrive back
-on `webrepl:out` (§1.1 loopback), so all instances observe one identical
+on `remote-repl:out` (§1.1 loopback), so all instances observe one identical
 history for the channel.
 
 ### 4.4 Event ids and the replay buffer
@@ -220,7 +220,7 @@ full) and a *next id* counter.
 
 - The owner assigns `id` to each event it publishes: `next id + 1`, so ids on
   a channel are positive integers, strictly increasing in publish order.
-- On every received `OutMessage`, each instance (owner included) sets its
+- On every received `RemoteReplOutMessage`, each instance (owner included) sets its
   *next id* for the channel to `max(next id, event.id)`, appends the event to
   the replay buffer, and forwards it to the channel's live SSE subscribers.
 - Ids are unique and monotonic within one owner's tenure. A new owner after a
@@ -239,7 +239,7 @@ full) and a *next id* counter.
 
 Each instance keeps, per channel, the id of the recorded owner (if any) and
 the local clock time at which it last saw a `claim` for that owner
-(*seen-at*). Both are updated only by `SysMessage`s and by this instance's own
+(*seen-at*). Both are updated only by `RemoteReplSysMessage`s and by this instance's own
 claims. Clocks are local; instances never compare timestamps with each other.
 
 ### 5.2 Claim
@@ -359,7 +359,7 @@ blank lines (they are no-ops in SSE).
 ```
 event: message
 id: <event id, decimal>
-data: <the SseEvent as one JSON line>
+data: <the RemoteReplSseEvent as one JSON line>
 
 ```
 
@@ -381,7 +381,7 @@ two. Live events follow in arrival order.
 ### 6.4 Heartbeat and the id-stamping rule
 
 Every `heartbeatInterval` (default 15 000 ms) per connection, the server
-sends a `PingEvent` frame to keep the connection alive through proxies. Pings
+sends a `RemoteReplPingEvent` frame to keep the connection alive through proxies. Pings
 are per-connection, never published, never buffered.
 
 The `id:` line of a ping frame MUST be the **id of the last non-ping event
@@ -448,6 +448,20 @@ implementation that serves both parts then only needs the routes of §6.
   one cluster MUST run implementations of the same spec version; mixed-version
   clusters and clusters that mix implementations in different languages are
   not supported scenarios and have undefined behaviour.
+
+### 8.1 Legacy wire: `nestjs-web-repl` 2.3.x and earlier
+
+`nestjs-web-repl` up to and including 2.3.x speaks an undocumented pre-1.0
+wire: the same message shapes on topics named with a different prefix. It is
+**not interoperable** with this specification. An instance that runs 1.0.0
+and an instance that runs 2.3.x on one transport never see each other's
+messages. During a rolling upgrade this gives a short window in which the
+old instances and the new instances form two clusters: a command sent to a
+channel owned by an old instance can be claimed by a new instance, so the
+channel gets a fresh session on the new side. The window closes when the last
+old instance stops; its leases expire (§5.4) and no further repair is needed.
+`nestjs-web-repl` 2.4.0 and later re-export the 1.0.0 implementation and speak
+this wire.
 
 ## 9. Defaults summary
 

@@ -597,7 +597,7 @@ describe('WebReplService', () => {
 
         const claimPublishes = publishSpy.mock.calls.filter(
           ([topic, message]) =>
-            topic === 'webrepl:sys' && String(message).includes('"kind":"claim"'),
+            topic === 'remote-repl:sys' && String(message).includes('"kind":"claim"'),
         );
         expect(claimPublishes.length).toBeGreaterThan(0);
         expect(

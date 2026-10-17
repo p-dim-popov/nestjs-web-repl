@@ -22,17 +22,17 @@ describe('BaseRedisWebReplAdapter', () => {
   it('delivers a dispatched message to a registered handler', async () => {
     const a = new FakeBase();
     const got: string[] = [];
-    await a.subscribe('webrepl:cmd', (m) => got.push(m));
-    a.emit('webrepl:cmd', 'hello');
+    await a.subscribe('remote-repl:cmd', (m) => got.push(m));
+    a.emit('remote-repl:cmd', 'hello');
     expect(got).toEqual(['hello']);
   });
 
   it('calls ensureSubscribed exactly once per topic across multiple subscribe calls', async () => {
     const a = new FakeBase();
-    await a.subscribe('webrepl:cmd', () => {});
-    await a.subscribe('webrepl:cmd', () => {});
-    await a.subscribe('webrepl:out', () => {});
-    expect(a.subscribeCalls).toEqual(['webrepl:cmd', 'webrepl:out']);
+    await a.subscribe('remote-repl:cmd', () => {});
+    await a.subscribe('remote-repl:cmd', () => {});
+    await a.subscribe('remote-repl:out', () => {});
+    expect(a.subscribeCalls).toEqual(['remote-repl:cmd', 'remote-repl:out']);
   });
 
   it('fans out to every handler on a topic and none of another topic', async () => {
@@ -40,10 +40,10 @@ describe('BaseRedisWebReplAdapter', () => {
     const one: string[] = [];
     const two: string[] = [];
     const other: string[] = [];
-    await a.subscribe('webrepl:sys', (m) => one.push(m));
-    await a.subscribe('webrepl:sys', (m) => two.push(m));
-    await a.subscribe('webrepl:out', (m) => other.push(m));
-    a.emit('webrepl:sys', 'claim');
+    await a.subscribe('remote-repl:sys', (m) => one.push(m));
+    await a.subscribe('remote-repl:sys', (m) => two.push(m));
+    await a.subscribe('remote-repl:out', (m) => other.push(m));
+    a.emit('remote-repl:sys', 'claim');
     expect(one).toEqual(['claim']);
     expect(two).toEqual(['claim']);
     expect(other).toEqual([]);
@@ -51,28 +51,28 @@ describe('BaseRedisWebReplAdapter', () => {
 
   it('delegates publish to doPublish', async () => {
     const a = new FakeBase();
-    await a.publish('webrepl:cmd', 'x');
-    expect(a.publishes).toEqual([['webrepl:cmd', 'x']]);
+    await a.publish('remote-repl:cmd', 'x');
+    expect(a.publishes).toEqual([['remote-repl:cmd', 'x']]);
   });
 
   it('tears down and clears state on onModuleDestroy', async () => {
     const a = new FakeBase();
     const got: string[] = [];
-    await a.subscribe('webrepl:cmd', (m) => got.push(m));
+    await a.subscribe('remote-repl:cmd', (m) => got.push(m));
     await a.onModuleDestroy();
     expect(a.teardowns).toBe(1);
-    a.emit('webrepl:cmd', 'after');
+    a.emit('remote-repl:cmd', 'after');
     expect(got).toEqual([]);
   });
 
   it('isolates a throwing handler: dispatch does not throw and later handlers still run', async () => {
     const a = new FakeBase();
     const got: string[] = [];
-    await a.subscribe('webrepl:cmd', () => {
+    await a.subscribe('remote-repl:cmd', () => {
       throw new Error('boom');
     });
-    await a.subscribe('webrepl:cmd', (m) => got.push(m));
-    expect(() => a.emit('webrepl:cmd', 'x')).not.toThrow();
+    await a.subscribe('remote-repl:cmd', (m) => got.push(m));
+    expect(() => a.emit('remote-repl:cmd', 'x')).not.toThrow();
     expect(got).toEqual(['x']);
   });
 
@@ -83,12 +83,12 @@ describe('BaseRedisWebReplAdapter', () => {
         prefix: 'tenant-a:',
         logger: { warn: () => {}, error: (m) => errors.push(m) },
       });
-      await a.subscribe('webrepl:cmd', () => {
+      await a.subscribe('remote-repl:cmd', () => {
         throw new Error('boom');
       });
-      a.emit('tenant-a:webrepl:cmd', 'x');
+      a.emit('tenant-a:remote-repl:cmd', 'x');
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toContain('"webrepl:cmd"');
+      expect(errors[0]).toContain('"remote-repl:cmd"');
       expect(errors[0]).toContain('boom');
     });
 
@@ -96,10 +96,10 @@ describe('BaseRedisWebReplAdapter', () => {
       const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
       try {
         const a = new FakeBase();
-        await a.subscribe('webrepl:cmd', () => {
+        await a.subscribe('remote-repl:cmd', () => {
           throw new Error('boom');
         });
-        a.emit('webrepl:cmd', 'x');
+        a.emit('remote-repl:cmd', 'x');
         expect(spy).toHaveBeenCalledTimes(1);
         expect(String(spy.mock.calls[0][0])).toContain('boom');
       } finally {
@@ -112,20 +112,20 @@ describe('BaseRedisWebReplAdapter', () => {
     it('prepends the prefix verbatim on the wire and strips it before dispatching to handlers', async () => {
       const a = new FakeBase({ prefix: 'tenant-a:' });
       const got: string[] = [];
-      await a.subscribe('webrepl:cmd', (m) => got.push(m));
-      await a.publish('webrepl:cmd', 'x');
-      expect(a.subscribeCalls).toEqual(['tenant-a:webrepl:cmd']);
-      expect(a.publishes).toEqual([['tenant-a:webrepl:cmd', 'x']]);
-      a.emit('tenant-a:webrepl:cmd', 'hello');
+      await a.subscribe('remote-repl:cmd', (m) => got.push(m));
+      await a.publish('remote-repl:cmd', 'x');
+      expect(a.subscribeCalls).toEqual(['tenant-a:remote-repl:cmd']);
+      expect(a.publishes).toEqual([['tenant-a:remote-repl:cmd', 'x']]);
+      a.emit('tenant-a:remote-repl:cmd', 'hello');
       expect(got).toEqual(['hello']);
     });
 
     it('without a prefix, topic names are byte-identical on the wire', async () => {
       const a = new FakeBase();
-      await a.subscribe('webrepl:out', () => {});
-      await a.publish('webrepl:out', 'x');
-      expect(a.subscribeCalls).toEqual(['webrepl:out']);
-      expect(a.publishes).toEqual([['webrepl:out', 'x']]);
+      await a.subscribe('remote-repl:out', () => {});
+      await a.publish('remote-repl:out', 'x');
+      expect(a.subscribeCalls).toEqual(['remote-repl:out']);
+      expect(a.publishes).toEqual([['remote-repl:out', 'x']]);
     });
   });
 });

@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events';
-import type { WebReplAdapter } from '../protocol/adapter';
+import type { RemoteReplTransport } from '../protocol/transport';
 
-export class InMemoryWebReplAdapter implements WebReplAdapter {
+/** The default transport: one process, every instance in the same event loop. */
+export class RemoteReplInMemoryTransport implements RemoteReplTransport {
   private readonly emitter = new EventEmitter();
 
   constructor() {
@@ -16,7 +17,7 @@ export class InMemoryWebReplAdapter implements WebReplAdapter {
     this.emitter.on(topic, handler);
   }
 
-  onModuleDestroy(): void {
+  close(): void {
     this.emitter.removeAllListeners();
   }
 }

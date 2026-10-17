@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Ajv from 'ajv';
-import { TOPICS } from './constants';
+import { REMOTE_REPL_TOPICS } from './constants';
 
 // The committed JSON Schema is the language-neutral contract (PROTOCOL.md).
 // These samples are the exact shapes the engine publishes on the transport
@@ -15,9 +15,9 @@ describe('protocol JSON Schema (schema/protocol.schema.json)', () => {
   ajv.addSchema(schema, 'protocol');
   const validate = (def: string, value: unknown) => ajv.validate(`protocol#/definitions/${def}`, value);
 
-  it('accepts the command message the origin instance publishes on webrepl:cmd', () => {
+  it('accepts the command message the origin instance publishes on remote-repl:cmd', () => {
     expect(
-      validate('CmdMessage', {
+      validate('RemoteReplCmdMessage', {
         channel: 'dev',
         commandId: 'cmd_1_ab12',
         command: 'get(CatService).findAll()',
@@ -27,9 +27,9 @@ describe('protocol JSON Schema (schema/protocol.schema.json)', () => {
   });
 
   it('rejects a command message with a missing field or a non-string command', () => {
-    expect(validate('CmdMessage', { channel: 'dev', commandId: 'cmd_1', command: '1+1' })).toBe(false);
+    expect(validate('RemoteReplCmdMessage', { channel: 'dev', commandId: 'cmd_1', command: '1+1' })).toBe(false);
     expect(
-      validate('CmdMessage', { channel: 'dev', commandId: 'cmd_1', command: 1, originInstanceId: 'a' }),
+      validate('RemoteReplCmdMessage', { channel: 'dev', commandId: 'cmd_1', command: 1, originInstanceId: 'a' }),
     ).toBe(false);
   });
 
@@ -46,37 +46,37 @@ describe('protocol JSON Schema (schema/protocol.schema.json)', () => {
   const errorEvent = { id: 4, type: 'system', commandId: 'cmd_1_ab12', data: { error: 'boom' } };
   const pingEvent = { id: 0, type: 'system', commandId: null, data: { ping: true } };
 
-  it('accepts every event variant the owner publishes on webrepl:out', () => {
+  it('accepts every event variant the owner publishes on remote-repl:out', () => {
     for (const event of [commandEvent, outputEvent, doneEvent, errorEvent]) {
-      expect(validate('WireOutMessage', { channel: 'dev', event })).toBe(true);
+      expect(validate('RemoteReplWireOutMessage', { channel: 'dev', event })).toBe(true);
     }
   });
 
   it('accepts a stray output chunk tagged with a null command id', () => {
-    expect(validate('WireOutMessage', { channel: 'dev', event: { ...outputEvent, commandId: null } })).toBe(true);
+    expect(validate('RemoteReplWireOutMessage', { channel: 'dev', event: { ...outputEvent, commandId: null } })).toBe(true);
   });
 
   it('rejects an event whose data does not match its type', () => {
-    expect(validate('WireOutMessage', { channel: 'dev', event: { ...outputEvent, data: { chunk: 'x' } } })).toBe(false);
-    expect(validate('WireOutMessage', { channel: 'dev', event: { ...commandEvent, data: { command: 'x' } } })).toBe(false);
-    expect(validate('WireOutMessage', { channel: 'dev', event: { ...doneEvent, data: { done: false } } })).toBe(false);
-    expect(validate('WireOutMessage', { channel: 'dev', event: { ...doneEvent, type: 'status' } })).toBe(false);
+    expect(validate('RemoteReplWireOutMessage', { channel: 'dev', event: { ...outputEvent, data: { chunk: 'x' } } })).toBe(false);
+    expect(validate('RemoteReplWireOutMessage', { channel: 'dev', event: { ...commandEvent, data: { command: 'x' } } })).toBe(false);
+    expect(validate('RemoteReplWireOutMessage', { channel: 'dev', event: { ...doneEvent, data: { done: false } } })).toBe(false);
+    expect(validate('RemoteReplWireOutMessage', { channel: 'dev', event: { ...doneEvent, type: 'status' } })).toBe(false);
   });
 
   it('the heartbeat is an SSE-only event: valid in an SSE data line, never on the transport', () => {
-    expect(validate('SseEvent', pingEvent)).toBe(true);
-    expect(validate('WireOutMessage', { channel: 'dev', event: pingEvent })).toBe(false);
-    expect(validate('TransportEvent', pingEvent)).toBe(false);
+    expect(validate('RemoteReplSseEvent', pingEvent)).toBe(true);
+    expect(validate('RemoteReplWireOutMessage', { channel: 'dev', event: pingEvent })).toBe(false);
+    expect(validate('RemoteReplTransportEvent', pingEvent)).toBe(false);
   });
 
   it('accepts claim and release system messages and rejects any other kind', () => {
-    expect(validate('SysMessage', { channel: 'dev', kind: 'claim', instanceId: 'inst_a' })).toBe(true);
-    expect(validate('SysMessage', { channel: 'dev', kind: 'release', instanceId: 'inst_a' })).toBe(true);
-    expect(validate('SysMessage', { channel: 'dev', kind: 'heartbeat', instanceId: 'inst_a' })).toBe(false);
+    expect(validate('RemoteReplSysMessage', { channel: 'dev', kind: 'claim', instanceId: 'inst_a' })).toBe(true);
+    expect(validate('RemoteReplSysMessage', { channel: 'dev', kind: 'release', instanceId: 'inst_a' })).toBe(true);
+    expect(validate('RemoteReplSysMessage', { channel: 'dev', kind: 'heartbeat', instanceId: 'inst_a' })).toBe(false);
   });
 
-  it('the Topic definition enumerates exactly the three transport topics', () => {
-    for (const t of Object.values(TOPICS)) expect(validate('Topic', t)).toBe(true);
-    expect(validate('Topic', 'webrepl:other')).toBe(false);
+  it('the RemoteReplTopic definition enumerates exactly the three transport topics', () => {
+    for (const t of Object.values(REMOTE_REPL_TOPICS)) expect(validate('RemoteReplTopic', t)).toBe(true);
+    expect(validate('RemoteReplTopic', 'remote-repl:other')).toBe(false);
   });
 });

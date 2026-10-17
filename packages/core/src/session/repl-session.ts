@@ -3,7 +3,19 @@ import { start, type REPLServer } from 'node:repl';
 import { PassThrough, Writable } from 'node:stream';
 import { inspect } from 'node:util';
 
-export interface ReplSessionOptions {
+/**
+ * One live REPL behind one channel on its owner instance (GLOSSARY.md:
+ * "Session"). The seam for another runtime's session implementation: the
+ * engine only ever calls `eval()` and `close()`.
+ */
+export interface RemoteReplSession {
+  /** Runs one command to completion; output arrives through `onOutput`. */
+  eval(command: string): Promise<void>;
+  /** Disposes the REPL; no further output after this (best effort). */
+  close(): void;
+}
+
+export interface RemoteReplSessionOptions {
   context: Record<string, unknown>;
   onOutput: (chunk: string) => void;
   /**
@@ -25,7 +37,7 @@ export interface ReplSessionOptions {
 // determined. Verified empirically on Node v26.
 const CONTINUATION_PROMPT = '| ';
 
-export class ReplSession {
+export class ReplSession implements RemoteReplSession {
   private readonly input = new PassThrough();
   private readonly server: REPLServer;
   private readonly evalTimeoutMs: number;
@@ -40,7 +52,7 @@ export class ReplSession {
   // thrown error. That makes "the sentinel appeared in output" a
   // deterministic, timing-independent "this statement is done" signal that
   // works uniformly across all of those cases.
-  private readonly sentinel = `<<webrepl:done:${randomUUID()}>>`;
+  private readonly sentinel = `<<remote-repl:done:${randomUUID()}>>`;
   // The internal REPLServer state holding whatever raw source has been
   // accumulated so far but not yet parsed into a complete, evaluatable
   // statement -- empty once a submitted command is either fully complete
@@ -54,7 +66,7 @@ export class ReplSession {
   private watchdog: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
 
-  constructor(private readonly opts: ReplSessionOptions) {
+  constructor(private readonly opts: RemoteReplSessionOptions) {
     this.evalTimeoutMs = opts.evalTimeoutMs ?? 30000;
 
     const output = new Writable({

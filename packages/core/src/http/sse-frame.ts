@@ -1,17 +1,17 @@
-import type { WebReplEvent } from '../protocol/messages';
+import type { RemoteReplEvent } from '../protocol/messages';
 
 /**
  * One SSE message, framework-free. Structurally compatible with Nest's
  * `MessageEvent` (`{ data, id?, type? }`), and trivially serialisable by any
  * other HTTP layer as `event: <type>\nid: <id>\ndata: <data>\n\n`.
  */
-export interface SseFrame {
+export interface RemoteReplSseFrame {
   id: string;
   type: string;
   data: string;
 }
 
-// The heartbeat is emitted as a real WebReplEvent with the sentinel `id: 0`.
+// The heartbeat is emitted as a real RemoteReplEvent with the sentinel `id: 0`.
 // Per the SSE spec, any non-null `id` field (including "0") overwrites the
 // browser EventSource's last-event-id -- so if every heartbeat carried
 // `id: "0"`, almost any reconnect after an idle period would send
@@ -29,7 +29,7 @@ export interface SseFrame {
 // the SSE spec, receiving an id equal to the one the client already has is
 // a no-op for its reconnection cursor, so heartbeats stop perturbing
 // Last-Event-ID once at least one real event has flowed.
-export function toSseFrame(event: WebReplEvent, lastRealId: number): SseFrame {
+export function toSseFrame(event: RemoteReplEvent, lastRealId: number): RemoteReplSseFrame {
   const id = event.id === 0 ? lastRealId : event.id;
   return { id: String(id), type: 'message', data: JSON.stringify(event) };
 }
@@ -40,7 +40,7 @@ export function toSseFrame(event: WebReplEvent, lastRealId: number): SseFrame {
  * Field values must not contain line breaks (JSON data never does); any
  * CR/LF in them is stripped rather than allowed to forge extra fields.
  */
-export function sseFrameToText(frame: SseFrame): string {
+export function sseFrameToText(frame: RemoteReplSseFrame): string {
   const line = (v: string) => v.replace(/[\r\n]/g, '');
   return `event: ${line(frame.type)}\nid: ${line(frame.id)}\ndata: ${line(frame.data)}\n\n`;
 }

@@ -1,7 +1,7 @@
 import { EventRingBuffer } from './ring-buffer';
-import type { WebReplEvent } from './protocol/messages';
+import type { RemoteReplEvent } from './protocol/messages';
 
-const ev = (id: number): WebReplEvent => ({ id, type: 'output', commandId: null, data: `e${id}` });
+const ev = (id: number): RemoteReplEvent => ({ id, type: 'output', commandId: null, data: `e${id}` });
 
 describe('EventRingBuffer', () => {
   it('returns all events for a null cursor', () => {

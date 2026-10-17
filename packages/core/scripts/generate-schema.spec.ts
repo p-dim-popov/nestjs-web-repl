@@ -21,7 +21,7 @@ describe('scripts/generate-schema.mjs --check', () => {
     const dir = mkdtempSync(join(tmpdir(), 'remote-repl-schema-'));
     const tampered = join(dir, 'protocol.schema.json');
     const schema = JSON.parse(readFileSync(committed, 'utf8'));
-    delete schema.definitions.SysMessage.properties.instanceId;
+    delete schema.definitions.RemoteReplSysMessage.properties.instanceId;
     writeFileSync(tampered, JSON.stringify(schema, null, 2) + '\n');
 
     const res = run('--check', '--out', tampered);

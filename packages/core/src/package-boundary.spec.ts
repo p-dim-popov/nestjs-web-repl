@@ -7,7 +7,7 @@ const walk = (dir: string): string[] =>
   );
 
 // @remote-repl/core is the framework-free heart of the monorepo. Every
-// framework adapter (nestjs today, express/bun/deno later) depends on it, so
+// framework package (nestjs today, express/bun/deno later) depends on it, so
 // it must never pull a framework, a transport client, or rxjs into consumers.
 describe('@remote-repl/core package boundary', () => {
   const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));

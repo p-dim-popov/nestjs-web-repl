@@ -27,7 +27,7 @@ export interface RedisWebReplAdapterOptions {
 
 /**
  * Library-agnostic Redis pub/sub bridge. Subclasses wire the abstract hooks to a
- * concrete client. Topics are opaque; the engine owns the `webrepl:*` names.
+ * concrete client. Topics are opaque; the engine owns the `remote-repl:*` names.
  * The abstract hooks and `dispatch` speak WIRE topic names (prefix applied);
  * the public `publish`/`subscribe` speak the engine's bare names.
  */

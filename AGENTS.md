@@ -149,7 +149,7 @@ change or that spec goes red. Packages live under `packages/`:
   - `src/protocol/` — the wire protocol: `messages.ts` (`CmdMessage`,
     `OutMessage`, `SysMessage`, the `SseEvent`/`TransportEvent` discriminated
     unions and the loose `WebReplEvent` the engine still works with),
-    `adapter.ts` (the `WebReplAdapter` transport interface; its optional
+    `transport.ts` (the `WebReplAdapter` transport interface; its optional
     `onModuleDestroy?` hook keeps that name for compatibility), `constants.ts`
     (`TOPICS`, `DEFAULTS`), `options.ts` (`WebReplOptions`, the framework-free
     options shape).
@@ -162,7 +162,7 @@ change or that spec goes red. Packages live under `packages/`:
     update PROTOCOL.md's prose and bump its version (additive = minor,
     breaking = major).
   - `src/ring-buffer.ts` — `EventRingBuffer`, the per-channel SSE replay buffer.
-  - `src/transport/in-memory.adapter.ts` — `InMemoryWebReplAdapter`.
+  - `src/transport/in-memory.transport.ts` — `InMemoryWebReplAdapter`.
   - `src/ui/repl-ui.html.ts` — the inlined browser UI (self-hosted Monaco).
     `src/ui/monaco-assets.ts` serves `dist/ui/vs` (built) or falls back to the
     `monaco-editor` devDependency through Node's resolver (hoisted to the root

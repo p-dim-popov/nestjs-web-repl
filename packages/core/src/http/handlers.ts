@@ -1,33 +1,33 @@
-import { ReplDisabledError } from '../engine/remote-repl-engine';
-import type { WebReplEvent } from '../protocol/messages';
+import { RemoteReplDisabledError } from '../engine/remote-repl-engine';
+import type { RemoteReplEvent } from '../protocol/messages';
 import { renderReplUi } from '../ui/repl-ui.html';
-import { resolveMonacoFile, type MonacoAsset } from '../ui/monaco-assets';
+import { resolveMonacoFile, type RemoteReplAsset } from '../ui/monaco-assets';
 import { landingRedirectUrl, randomChannelName } from './landing';
-import { sseFrameToText, toSseFrame, type SseFrame } from './sse-frame';
+import { sseFrameToText, toSseFrame, type RemoteReplSseFrame } from './sse-frame';
 
 /** The part of the engine's public surface the handlers consume. */
-export interface ReplHandlerEngine {
+export interface RemoteReplHandlerEngine {
   dispatch(channel: string, command: string): Promise<{ commandId: string }>;
-  events(channel: string, lastEventId: number | null): AsyncIterableIterator<WebReplEvent>;
+  events(channel: string, lastEventId: number | null): AsyncIterableIterator<RemoteReplEvent>;
 }
 
 /**
  * Thrown (as a rejection) by `post()` when the body's `command` is not a
- * non-empty string. Adapters map it to 400 with `message` as the body.
+ * non-empty string. Framework packages map it to 400 with `message` as the body.
  */
-export class InvalidCommandError extends Error {
+export class RemoteReplInvalidCommandError extends Error {
   constructor() {
     super('command must be a non-empty string');
-    this.name = 'InvalidCommandError';
+    this.name = 'RemoteReplInvalidCommandError';
   }
 }
 
 /**
  * The response headers the reference (Nest) SSE implementation sends, so
- * every adapter matches the wire format exactly. Write `SSE_STREAM_PREAMBLE`
+ * every framework package matches the wire format exactly. Write `REMOTE_REPL_SSE_STREAM_PREAMBLE`
  * once after the headers, then each frame from `stream()` verbatim.
  */
-export const SSE_RESPONSE_HEADERS = Object.freeze({
+export const REMOTE_REPL_SSE_RESPONSE_HEADERS = Object.freeze({
   'Content-Type': 'text/event-stream',
   Connection: 'keep-alive',
   'Cache-Control': 'private, no-cache, no-store, must-revalidate, max-age=0, no-transform',
@@ -37,46 +37,46 @@ export const SSE_RESPONSE_HEADERS = Object.freeze({
 });
 
 /** A single leading blank line, written when the SSE headers are committed. */
-export const SSE_STREAM_PREAMBLE = '\n';
+export const REMOTE_REPL_SSE_STREAM_PREAMBLE = '\n';
 
 /**
  * `Last-Event-ID` request header -> replay cursor. Absent, empty or not a
  * number means "no cursor" (replay everything), per PROTOCOL.md §6.3.
  */
-export function parseLastEventId(header: string | null | undefined): number | null {
+export function parseRemoteReplLastEventId(header: string | null | undefined): number | null {
   if (!header) return null;
   const parsed = Number(header);
   return Number.isNaN(parsed) ? null : parsed;
 }
 
-export interface ReplHandlerOptions {
+export interface RemoteReplHandlerOptions {
   enabled: boolean;
 }
 
-export interface ReplHandlers {
+export interface RemoteReplHandlers {
   /** GET <base>: the redirect target for a visitor with no channel. */
   landing(requestUrl: string): string;
   /**
    * POST <base>/:channel. Always async: every failure is a rejection --
-   * `ReplDisabledError` when disabled, `InvalidCommandError` for a bad body.
+   * `RemoteReplDisabledError` when disabled, `RemoteReplInvalidCommandError` for a bad body.
    */
   post(channel: string, body: unknown): Promise<{ commandId: string }>;
   /**
-   * GET <base>/:channel (SSE), structured form. Yields `SseFrame`s: the
-   * replay since `lastEventId` (see `parseLastEventId`), then live events
+   * GET <base>/:channel (SSE), structured form. Yields `RemoteReplSseFrame`s: the
+   * replay since `lastEventId` (see `parseRemoteReplLastEventId`), then live events
    * and `{ping}` heartbeats stamped with the last real id sent on THIS
-   * connection (seeded from the client's cursor). For adapters whose SSE
+   * connection (seeded from the client's cursor). For framework packages whose SSE
    * layer wants `{id,type,data}` objects (e.g. Nest's `MessageEvent`)
-   * rather than wire text. Opens the engine stream eagerly; the adapter
+   * rather than wire text. Opens the engine stream eagerly; the caller
    * MUST call `return()` on disconnect -- that is what closes the engine
-   * subscription and lets the channel be GC'd. Throws `ReplDisabledError`
+   * subscription and lets the channel be GC'd. Throws `RemoteReplDisabledError`
    * synchronously when disabled.
    */
-  streamFrames(channel: string, lastEventId: number | null): AsyncIterableIterator<SseFrame>;
+  streamFrames(channel: string, lastEventId: number | null): AsyncIterableIterator<RemoteReplSseFrame>;
   /**
    * GET <base>/:channel (SSE), wire form: `streamFrames()` serialised with
    * `sseFrameToText`, i.e. ready-to-send text frames. Same contract
-   * (eager open, MUST `return()` on disconnect, sync `ReplDisabledError`).
+   * (eager open, MUST `return()` on disconnect, sync `RemoteReplDisabledError`).
    */
   stream(channel: string, lastEventId: number | null): AsyncIterableIterator<string>;
   /** GET <base>/:channel/ui: the browser UI (`text/html`), channel escaped. */
@@ -85,15 +85,15 @@ export interface ReplHandlers {
    * GET <base>/:channel/vs/*: one Monaco asset by its path relative to `vs/`,
    * or null (-> 404) for a miss, a directory or any traversal attempt.
    */
-  asset(relativePath: string): MonacoAsset | null;
+  asset(relativePath: string): RemoteReplAsset | null;
 }
 
-export function createReplHandlers(
-  engine: ReplHandlerEngine,
-  options: ReplHandlerOptions,
-): ReplHandlers {
+export function createRemoteReplHandlers(
+  engine: RemoteReplHandlerEngine,
+  options: RemoteReplHandlerOptions,
+): RemoteReplHandlers {
   const assertEnabled = (): void => {
-    if (!options.enabled) throw new ReplDisabledError();
+    if (!options.enabled) throw new RemoteReplDisabledError();
   };
   return {
     landing(requestUrl) {
@@ -104,7 +104,7 @@ export function createReplHandlers(
       assertEnabled();
       const command = (body as { command?: unknown } | null | undefined)?.command;
       if (typeof command !== 'string' || command.trim().length === 0) {
-        throw new InvalidCommandError();
+        throw new RemoteReplInvalidCommandError();
       }
       return engine.dispatch(channel, command);
     },

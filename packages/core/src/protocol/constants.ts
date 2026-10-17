@@ -1,11 +1,11 @@
-/** Transport topic names. Fixed wire protocol -- shared by every instance and adapter. */
-export const TOPICS = {
-  cmd: 'webrepl:cmd',
-  out: 'webrepl:out',
-  sys: 'webrepl:sys',
+/** Transport topic names. Fixed wire protocol -- shared by every instance and transport. */
+export const REMOTE_REPL_TOPICS = {
+  cmd: 'remote-repl:cmd',
+  out: 'remote-repl:out',
+  sys: 'remote-repl:sys',
 } as const;
 
-export const DEFAULTS = {
+export const REMOTE_REPL_DEFAULTS = {
   sessionTtl: 1_800_000,
   replayBufferSize: 200,
   heartbeatInterval: 15_000,

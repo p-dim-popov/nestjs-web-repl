@@ -10,8 +10,8 @@ describe('IoRedisWebReplAdapter', () => {
     const a = new IoRedisWebReplAdapter(client());
     const b = new IoRedisWebReplAdapter(client());
     const received: string[] = [];
-    await b.subscribe('webrepl:cmd', (m) => received.push(m));
-    await a.publish('webrepl:cmd', 'hello');
+    await b.subscribe('remote-repl:cmd', (m) => received.push(m));
+    await a.publish('remote-repl:cmd', 'hello');
     await new Promise((r) => setTimeout(r, 20));
     expect(received).toEqual(['hello']);
   });
@@ -20,8 +20,8 @@ describe('IoRedisWebReplAdapter', () => {
     const a = new IoRedisWebReplAdapter(client());
     const b = new IoRedisWebReplAdapter(client());
     const received: string[] = [];
-    await b.subscribe('webrepl:out', (m) => received.push(m));
-    await a.publish('webrepl:cmd', 'x');
+    await b.subscribe('remote-repl:out', (m) => received.push(m));
+    await a.publish('remote-repl:cmd', 'x');
     await new Promise((r) => setTimeout(r, 20));
     expect(received).toEqual([]);
   });
@@ -31,12 +31,12 @@ describe('IoRedisWebReplAdapter', () => {
     const a = new IoRedisWebReplAdapter(client());
     const b = new IoRedisWebReplAdapter(pubB);
     const received: string[] = [];
-    await b.subscribe('webrepl:out', (m) => received.push(m));
+    await b.subscribe('remote-repl:out', (m) => received.push(m));
     await b.onModuleDestroy();
-    await a.publish('webrepl:out', 'after');
+    await a.publish('remote-repl:out', 'after');
     await new Promise((r) => setTimeout(r, 20));
     expect(received).toEqual([]);
-    await expect(pubB.publish('webrepl:out', 'again')).resolves.toBeTypeOf('number');
+    await expect(pubB.publish('remote-repl:out', 'again')).resolves.toBeTypeOf('number');
   });
 
   it('quits the subscriber exactly once when destroyed twice concurrently', async () => {
@@ -53,7 +53,7 @@ describe('IoRedisWebReplAdapter', () => {
       return sub;
     };
     const b = new IoRedisWebReplAdapter(pub);
-    await b.subscribe('webrepl:out', () => {});
+    await b.subscribe('remote-repl:out', () => {});
     await expect(Promise.all([b.onModuleDestroy(), b.onModuleDestroy()])).resolves.toBeDefined();
     expect(quits).toBe(1);
   });

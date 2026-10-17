@@ -7,8 +7,8 @@ describe('NodeRedisWebReplAdapter', () => {
     const a = new NodeRedisWebReplAdapter(new FakeNodeRedis(bus));
     const b = new NodeRedisWebReplAdapter(new FakeNodeRedis(bus));
     const received: string[] = [];
-    await b.subscribe('webrepl:cmd', (m) => received.push(m));
-    await a.publish('webrepl:cmd', 'hello');
+    await b.subscribe('remote-repl:cmd', (m) => received.push(m));
+    await a.publish('remote-repl:cmd', 'hello');
     expect(received).toEqual(['hello']);
   });
 
@@ -16,7 +16,7 @@ describe('NodeRedisWebReplAdapter', () => {
     const bus = new FakeRedisBus();
     const b = new NodeRedisWebReplAdapter(new FakeNodeRedis(bus));
     // The fake throws if subscribe runs before connect; resolving proves order.
-    await expect(b.subscribe('webrepl:sys', () => {})).resolves.toBeUndefined();
+    await expect(b.subscribe('remote-repl:sys', () => {})).resolves.toBeUndefined();
   });
 
   it('quits only the duplicated subscriber on destroy, leaving the publisher usable', async () => {
@@ -25,12 +25,12 @@ describe('NodeRedisWebReplAdapter', () => {
     const a = new NodeRedisWebReplAdapter(new FakeNodeRedis(bus));
     const b = new NodeRedisWebReplAdapter(pubB);
     const received: string[] = [];
-    await b.subscribe('webrepl:out', (m) => received.push(m));
+    await b.subscribe('remote-repl:out', (m) => received.push(m));
     await b.onModuleDestroy();
     expect(pubB.quitCalled).toBe(false);
-    await a.publish('webrepl:out', 'after');
+    await a.publish('remote-repl:out', 'after');
     expect(received).toEqual([]);
-    await expect(pubB.publish('webrepl:out', 'x')).resolves.toBe(0);
+    await expect(pubB.publish('remote-repl:out', 'x')).resolves.toBe(0);
   });
 
   it('creates and connects the subscriber exactly once across multiple topic subscriptions', async () => {
@@ -38,9 +38,9 @@ describe('NodeRedisWebReplAdapter', () => {
     const pub = new FakeNodeRedis(bus);
     const b = new NodeRedisWebReplAdapter(pub);
     await Promise.all([
-      b.subscribe('webrepl:cmd', () => {}),
-      b.subscribe('webrepl:out', () => {}),
-      b.subscribe('webrepl:sys', () => {}),
+      b.subscribe('remote-repl:cmd', () => {}),
+      b.subscribe('remote-repl:out', () => {}),
+      b.subscribe('remote-repl:sys', () => {}),
     ]);
     // One duplicated subscriber connection, connected exactly once — the
     // memoized `connecting` promise must dedupe concurrent subscribes.
@@ -52,7 +52,7 @@ describe('NodeRedisWebReplAdapter', () => {
     const bus = new FakeRedisBus();
     const pub = new FakeNodeRedis(bus);
     const b = new NodeRedisWebReplAdapter(pub);
-    await b.subscribe('webrepl:out', () => {});
+    await b.subscribe('remote-repl:out', () => {});
     // A real client throws on a second quit(); both calls must settle cleanly.
     await expect(Promise.all([b.onModuleDestroy(), b.onModuleDestroy()])).resolves.toBeDefined();
     expect(pub.duplicates[0].quitCount).toBe(1);

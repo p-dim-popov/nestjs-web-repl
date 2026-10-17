@@ -56,7 +56,7 @@ const MIME_BY_EXT: Record<string, string> = {
   '.map': 'application/json',
 };
 
-export interface MonacoAsset {
+export interface RemoteReplAsset {
   buffer: Buffer;
   contentType: string;
 }
@@ -70,7 +70,7 @@ export function resolveMonacoFile(
   relPath: string,
   moduleDir?: string,
   resolvePackage?: () => string,
-): MonacoAsset | null {
+): RemoteReplAsset | null {
   const root = monacoVsDir(moduleDir, resolvePackage);
   if (root === null) return null;
   const full = normalize(join(root, relPath));

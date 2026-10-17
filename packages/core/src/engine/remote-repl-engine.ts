@@ -1,14 +1,15 @@
-import { TOPICS, DEFAULTS } from '../protocol/constants';
-import type { WebReplAdapter } from '../protocol/adapter';
-import type { CmdMessage, OutMessage, SysMessage, WebReplEvent } from '../protocol/messages';
-import type { WebReplOptions } from '../protocol/options';
+import { REMOTE_REPL_TOPICS, REMOTE_REPL_DEFAULTS } from '../protocol/constants';
+import type { RemoteReplTransport } from '../protocol/transport';
+import { RemoteReplInMemoryTransport } from '../transport/in-memory.transport';
+import type { RemoteReplCmdMessage, RemoteReplOutMessage, RemoteReplSysMessage, RemoteReplEvent } from '../protocol/messages';
+import type { RemoteReplOptions } from '../protocol/options';
 import { EventRingBuffer } from '../ring-buffer';
 import { ReplSession } from '../session/repl-session';
 
-export type ContextFactory = () => Record<string, unknown>;
+export type RemoteReplContextFactory = () => Record<string, unknown>;
 
 /** The minimal logger shape the engine needs; a Nest `Logger` or `console` both fit. */
-export interface EngineLogger {
+export interface RemoteReplLogger {
   warn(message: string): void;
   error(message: string): void;
 }
@@ -16,30 +17,30 @@ export interface EngineLogger {
 /**
  * Thrown by `dispatch()` (as a rejection) and `events()` / `openStream()`
  * (synchronously) when the engine was configured with `enabled: false`.
- * Framework adapters map it to their own 404.
+ * Framework packages map it to their own 404.
  */
-export class ReplDisabledError extends Error {
+export class RemoteReplDisabledError extends Error {
   constructor() {
     super('remote-repl is disabled');
-    this.name = 'ReplDisabledError';
+    this.name = 'RemoteReplDisabledError';
   }
 }
 
 /** Receives one subscriber's events; `complete` fires once on engine stop. */
-export interface StreamSink {
-  next(event: WebReplEvent): void;
+export interface RemoteReplStreamSink {
+  next(event: RemoteReplEvent): void;
   complete(): void;
 }
 
 /** Handle returned by `openStream()`; `close()` detaches the sink synchronously. */
-export interface StreamSubscription {
+export interface RemoteReplStreamSubscription {
   close(): void;
 }
 
 interface ChannelState {
   buffer: EventRingBuffer;
   // Live subscribers (the `openStream()` sinks currently attached).
-  sinks: Set<StreamSink>;
+  sinks: Set<RemoteReplStreamSink>;
   nextId: number;
   session?: ReplSession;
   ttlTimer?: ReturnType<typeof setTimeout>;
@@ -67,7 +68,7 @@ interface ChannelState {
  * The framework-free REPL engine: transport pub/sub, channel ownership (a
  * heartbeat-renewed lease), per-channel serialized execution, output
  * fan-out, replay buffer, TTL + channel GC and runtime `enabled`
- * enforcement. Framework packages wrap it (nestjs: `WebReplService`).
+ * enforcement. Framework packages wrap it (nestjs: `RemoteReplService`).
  *
  * Members are plain TS `private` (never `#private`) on purpose: the
  * behaviour-preservation specs reach internals by name through `as any`.
@@ -88,9 +89,10 @@ export class RemoteReplEngine {
   private ownerHeartbeatTimer?: ReturnType<typeof setInterval>;
   private readonly channels = new Map<string, ChannelState>();
   private counter = 0;
+  private readonly transport: RemoteReplTransport;
 
   /**
-   * The `enabled` the engine was built with. Framework adapters derive their
+   * The `enabled` the engine was built with. Framework packages derive their
    * own 404 gate from this (never from a second copy of the flag), so the two
    * layers of the safety rail cannot disagree. Read-only by construction.
    */
@@ -99,22 +101,25 @@ export class RemoteReplEngine {
   }
 
   constructor(
-    options: WebReplOptions,
-    private readonly adapter: WebReplAdapter,
-    private readonly buildContext: ContextFactory,
+    options: RemoteReplOptions,
+    transport: RemoteReplTransport | undefined,
+    private readonly buildContext: RemoteReplContextFactory,
     private readonly clock: () => number = () => Date.now(),
-    private readonly logger: EngineLogger = console,
+    private readonly logger: RemoteReplLogger = console,
   ) {
+    // One instance needs no wiring: the in-memory transport is the default
+    // (the framework packages agree -- see ADR 0005). A cluster needs Redis.
+    this.transport = transport ?? new RemoteReplInMemoryTransport();
     this.instanceId = options.instanceId ?? `inst_${Math.random().toString(36).slice(2, 10)}`;
-    this.sessionTtl = options.sessionTtl ?? DEFAULTS.sessionTtl;
-    this.replayBufferSize = options.replayBufferSize ?? DEFAULTS.replayBufferSize;
-    this.heartbeatInterval = options.heartbeatInterval ?? DEFAULTS.heartbeatInterval;
+    this.sessionTtl = options.sessionTtl ?? REMOTE_REPL_DEFAULTS.sessionTtl;
+    this.replayBufferSize = options.replayBufferSize ?? REMOTE_REPL_DEFAULTS.replayBufferSize;
+    this.heartbeatInterval = options.heartbeatInterval ?? REMOTE_REPL_DEFAULTS.heartbeatInterval;
     this._enabled = options.enabled;
 
-    this.ownerHeartbeatInterval = options.ownerHeartbeatInterval ?? DEFAULTS.ownerHeartbeatInterval;
-    const requestedLeaseTtl = options.ownerLeaseTtl ?? DEFAULTS.ownerLeaseTtl;
+    this.ownerHeartbeatInterval = options.ownerHeartbeatInterval ?? REMOTE_REPL_DEFAULTS.ownerHeartbeatInterval;
+    const requestedLeaseTtl = options.ownerLeaseTtl ?? REMOTE_REPL_DEFAULTS.ownerLeaseTtl;
     // Enforce a MARGIN, not just strict inequality: a lease only one tick
-    // above the heartbeat interval leaves zero slack for publish/adapter
+    // above the heartbeat interval leaves zero slack for publish/transport
     // delivery jitter (measured on a PEER's clock) -- a single heartbeat
     // delivered even slightly late could make a live owner look stale to
     // someone else, causing exactly the preemption/split-session/lost-vars
@@ -145,15 +150,15 @@ export class RemoteReplEngine {
     // `enabled: false` from silently subscribing to the command bus and
     // executing arbitrary code.
     if (!this._enabled) return;
-    await this.adapter.subscribe(TOPICS.cmd, (m) => this.onCmd(this.parse<CmdMessage>(m)));
-    await this.adapter.subscribe(TOPICS.out, (m) => this.onOut(this.parse<OutMessage>(m)));
-    await this.adapter.subscribe(TOPICS.sys, (m) => this.onSys(this.parse<SysMessage>(m)));
+    await this.transport.subscribe(REMOTE_REPL_TOPICS.cmd, (m) => this.onCmd(this.parse<RemoteReplCmdMessage>(m)));
+    await this.transport.subscribe(REMOTE_REPL_TOPICS.out, (m) => this.onOut(this.parse<RemoteReplOutMessage>(m)));
+    await this.transport.subscribe(REMOTE_REPL_TOPICS.sys, (m) => this.onSys(this.parse<RemoteReplSysMessage>(m)));
 
     // Owner-liveness safety net: a live owner must keep renewing its lease
     // on every channel it owns, or another instance may treat that channel
     // as effectively ownerless once the lease expires (see onCmd). Only
     // started when enabled, mirroring the runtime `enabled` enforcement
-    // above -- a disabled instance must never touch the adapter, including
+    // above -- a disabled instance must never touch the transport, including
     // via this timer.
     this.ownerHeartbeatTimer = setInterval(
       () => this.heartbeatOwnedChannels(),
@@ -173,7 +178,10 @@ export class RemoteReplEngine {
       for (const sink of [...state.sinks]) sink.complete();
     }
     this.channels.clear();
-    await this.adapter.onModuleDestroy?.();
+    // `close()` is the transport contract; `onModuleDestroy()` is what a
+    // transport written against nestjs-web-repl <= 2.3.x implements instead.
+    const legacy = this.transport as { onModuleDestroy?(): void | Promise<void> };
+    await (this.transport.close ?? legacy.onModuleDestroy)?.call(this.transport);
   }
 
   // Re-announces `claim` for every channel this instance currently owns and
@@ -186,37 +194,37 @@ export class RemoteReplEngine {
     for (const [channel, state] of this.channels) {
       if (this.ownership.get(channel) !== this.instanceId) continue;
       if (!state.session) continue;
-      void this.safePublish(TOPICS.sys, {
+      void this.safePublish(REMOTE_REPL_TOPICS.sys, {
         channel,
         kind: 'claim',
         instanceId: this.instanceId,
-      } satisfies SysMessage);
+      } satisfies RemoteReplSysMessage);
     }
   }
 
-  /** Throws `ReplDisabledError` unless the engine was configured `enabled: true`. */
+  /** Throws `RemoteReplDisabledError` unless the engine was configured `enabled: true`. */
   protected assertEnabled(): void {
-    if (!this._enabled) throw new ReplDisabledError();
+    if (!this._enabled) throw new RemoteReplDisabledError();
   }
 
   async dispatch(channel: string, command: string): Promise<{ commandId: string }> {
     this.assertEnabled();
     const commandId = `cmd_${(++this.counter).toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    const msg: CmdMessage = { channel, commandId, command, originInstanceId: this.instanceId };
-    await this.safePublish(TOPICS.cmd, msg);
+    const msg: RemoteReplCmdMessage = { channel, commandId, command, originInstanceId: this.instanceId };
+    await this.safePublish(REMOTE_REPL_TOPICS.cmd, msg);
     return { commandId };
   }
 
   /**
    * The synchronous subscription primitive both `events()` and framework
-   * stream adapters (e.g. an RxJS Observable) build on. Creates the channel
+   * stream wrappers (e.g. an RxJS Observable) build on. Creates the channel
    * state, counts the subscriber, replays the buffer SYNCHRONOUSLY into the
    * sink, attaches it for live events and starts this subscriber's
    * client-visible `{ping}` heartbeat. `close()` detaches synchronously and
    * runs the channel-eviction check, so a subscriber-less, session-less,
    * empty channel is gone the moment its last subscriber leaves.
    */
-  openStream(channel: string, lastEventId: number | null, sink: StreamSink): StreamSubscription {
+  openStream(channel: string, lastEventId: number | null, sink: RemoteReplStreamSink): RemoteReplStreamSubscription {
     this.assertEnabled();
     const state = this.getChannel(channel);
     state.subscriberCount++;
@@ -246,22 +254,22 @@ export class RemoteReplEngine {
 
   /**
    * Replayed events, then live events (and `{ping}` heartbeats), as an
-   * async iterator. Throws `ReplDisabledError` synchronously when disabled.
+   * async iterator. Throws `RemoteReplDisabledError` synchronously when disabled.
    * The subscription is opened eagerly (so nothing published between this
    * call and the first `next()` is missed) and released by `return()` --
    * including a `return()` issued while a `next()` is still pending, which
    * settles that `next()` with `done: true` -- or by `stop()`.
    */
-  events(channel: string, lastEventId: number | null): AsyncIterableIterator<WebReplEvent> {
+  events(channel: string, lastEventId: number | null): AsyncIterableIterator<RemoteReplEvent> {
     this.assertEnabled();
-    const queue: WebReplEvent[] = [];
+    const queue: RemoteReplEvent[] = [];
     let done = false;
-    let waiter: ((result: IteratorResult<WebReplEvent, undefined>) => void) | undefined;
+    let waiter: ((result: IteratorResult<RemoteReplEvent, undefined>) => void) | undefined;
     const settle = () => {
       if (!waiter) return;
       const resolve = waiter;
       waiter = undefined;
-      if (queue.length > 0) resolve({ value: queue.shift() as WebReplEvent, done: false });
+      if (queue.length > 0) resolve({ value: queue.shift() as RemoteReplEvent, done: false });
       else if (done) resolve({ value: undefined, done: true });
     };
     const sub = this.openStream(channel, lastEventId, {
@@ -275,7 +283,7 @@ export class RemoteReplEngine {
         settle();
       },
     });
-    const finish = (): Promise<IteratorResult<WebReplEvent, undefined>> => {
+    const finish = (): Promise<IteratorResult<RemoteReplEvent, undefined>> => {
       done = true;
       queue.length = 0;
       sub.close();
@@ -285,7 +293,7 @@ export class RemoteReplEngine {
     return {
       next: () => {
         if (queue.length > 0) {
-          return Promise.resolve({ value: queue.shift() as WebReplEvent, done: false });
+          return Promise.resolve({ value: queue.shift() as RemoteReplEvent, done: false });
         }
         if (done) {
           sub.close();
@@ -303,7 +311,7 @@ export class RemoteReplEngine {
     };
   }
 
-  private async onCmd(msg: CmdMessage): Promise<void> {
+  private async onCmd(msg: RemoteReplCmdMessage): Promise<void> {
     const owner = this.ownership.get(msg.channel);
     const iAmOwner = owner === this.instanceId;
 
@@ -352,11 +360,11 @@ export class RemoteReplEngine {
       // being wedged fleet-wide forever.
       this.ownership.set(msg.channel, this.instanceId);
       this.ownerSeenAt.set(msg.channel, this.clock());
-      await this.safePublish(TOPICS.sys, {
+      await this.safePublish(REMOTE_REPL_TOPICS.sys, {
         channel: msg.channel,
         kind: 'claim',
         instanceId: this.instanceId,
-      } satisfies SysMessage);
+      } satisfies RemoteReplSysMessage);
     }
 
     this.touchTtl(msg.channel, state);
@@ -392,7 +400,7 @@ export class RemoteReplEngine {
           } catch (emitErr) {
             // emit() itself only throws synchronously if JSON.stringify
             // fails on a pathological error message; safePublish already
-            // swallows adapter failures. Never let this poison the queue.
+            // swallows transport failures. Never let this poison the queue.
             this.logger.error(`failed to report command failure: ${String(emitErr)}`);
             return undefined;
           }
@@ -408,7 +416,7 @@ export class RemoteReplEngine {
     await state.execQueue;
   }
 
-  private async executeCommand(msg: CmdMessage, state: ChannelState): Promise<void> {
+  private async executeCommand(msg: RemoteReplCmdMessage, state: ChannelState): Promise<void> {
     const session = this.ensureSession(msg.channel, state);
 
     await this.emit(msg.channel, 'command', msg.commandId, {
@@ -447,24 +455,24 @@ export class RemoteReplEngine {
 
   private async emit(
     channel: string,
-    type: WebReplEvent['type'],
+    type: RemoteReplEvent['type'],
     commandId: string | null,
     data: unknown,
   ): Promise<void> {
     const state = this.getChannel(channel);
     if (type === 'command') state.currentCommandId = commandId;
-    const event: WebReplEvent = { id: ++state.nextId, type, commandId, data };
-    await this.safePublish(TOPICS.out, { channel, event } satisfies OutMessage);
+    const event: RemoteReplEvent = { id: ++state.nextId, type, commandId, data };
+    await this.safePublish(REMOTE_REPL_TOPICS.out, { channel, event } satisfies RemoteReplOutMessage);
   }
 
-  private onOut(msg: OutMessage): void {
+  private onOut(msg: RemoteReplOutMessage): void {
     const state = this.getChannel(msg.channel);
     if (msg.event.id > state.nextId) state.nextId = msg.event.id;
     state.buffer.push(msg.event);
     for (const sink of [...state.sinks]) sink.next(msg.event);
   }
 
-  private onSys(msg: SysMessage): void {
+  private onSys(msg: RemoteReplSysMessage): void {
     if (msg.kind === 'claim') {
       this.ownership.set(msg.channel, msg.instanceId);
       this.ownerSeenAt.set(msg.channel, this.clock());
@@ -527,11 +535,11 @@ export class RemoteReplEngine {
   private touchTtl(channel: string, state: ChannelState): void {
     if (state.ttlTimer) clearTimeout(state.ttlTimer);
     state.ttlTimer = setTimeout(() => {
-      void this.safePublish(TOPICS.sys, {
+      void this.safePublish(REMOTE_REPL_TOPICS.sys, {
         channel,
         kind: 'release',
         instanceId: this.instanceId,
-      } satisfies SysMessage);
+      } satisfies RemoteReplSysMessage);
     }, this.sessionTtl);
     state.ttlTimer.unref?.();
   }
@@ -555,9 +563,9 @@ export class RemoteReplEngine {
 
   private async safePublish(topic: string, message: unknown): Promise<void> {
     try {
-      await this.adapter.publish(topic, JSON.stringify(message));
+      await this.transport.publish(topic, JSON.stringify(message));
     } catch (err) {
-      this.logger.error(`adapter publish failed on ${topic}: ${String(err)}`);
+      this.logger.error(`transport publish failed on ${topic}: ${String(err)}`);
     }
   }
 

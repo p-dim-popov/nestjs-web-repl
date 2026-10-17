@@ -1,15 +1,15 @@
-import { InMemoryWebReplAdapter } from '../transport/in-memory.adapter';
-import type { WebReplEvent } from '../protocol/messages';
-import type { WebReplOptions } from '../protocol/options';
-import { RemoteReplEngine, ReplDisabledError } from './remote-repl-engine';
+import { RemoteReplInMemoryTransport } from '../transport/in-memory.transport';
+import type { RemoteReplEvent } from '../protocol/messages';
+import type { RemoteReplOptions } from '../protocol/options';
+import { RemoteReplEngine, RemoteReplDisabledError } from './remote-repl-engine';
 
 const silentLogger = { warn: () => {}, error: () => {} };
 const defaultContext = () => ({ marker: () => 'ctx-ok' });
 
 const makeEngine = async (
   instanceId: string,
-  transport: InMemoryWebReplAdapter,
-  overrides: Partial<WebReplOptions> = {},
+  transport: RemoteReplInMemoryTransport,
+  overrides: Partial<RemoteReplOptions> = {},
   contextFactory: () => Record<string, unknown> = defaultContext,
   clock: () => number = () => Date.now(),
 ) => {
@@ -25,8 +25,8 @@ const makeEngine = async (
 };
 
 // Pull `n` events off an async iterator, then release it (return()).
-const takeN = async (iter: AsyncIterator<WebReplEvent>, n: number): Promise<WebReplEvent[]> => {
-  const got: WebReplEvent[] = [];
+const takeN = async (iter: AsyncIterator<RemoteReplEvent>, n: number): Promise<RemoteReplEvent[]> => {
+  const got: RemoteReplEvent[] = [];
   while (got.length < n) {
     const { value, done } = await iter.next();
     if (done) break;
@@ -37,7 +37,7 @@ const takeN = async (iter: AsyncIterator<WebReplEvent>, n: number): Promise<WebR
 };
 
 // Collect every event into `sink` until `stop()` is called.
-const collect = (iter: AsyncIterator<WebReplEvent>, sink: WebReplEvent[]) => {
+const collect = (iter: AsyncIterator<RemoteReplEvent>, sink: RemoteReplEvent[]) => {
   const pump = (async () => {
     for (;;) {
       const { value, done } = await iter.next();
@@ -60,7 +60,7 @@ const makeSharedClock = (start = 0) => {
 
 describe('RemoteReplEngine', () => {
   it('executes a dispatched command and yields the command echo followed by its output', async () => {
-    const transport = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     const engine = await makeEngine('A', transport);
 
     const iter = engine.events('c1', null);
@@ -76,7 +76,7 @@ describe('RemoteReplEngine', () => {
   });
 
   it('replays buffered events to a late subscriber', async () => {
-    const transport = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     const engine = await makeEngine('A', transport);
     await engine.dispatch('c3', '7 * 6');
     await sleep(20);
@@ -88,7 +88,7 @@ describe('RemoteReplEngine', () => {
   });
 
   it('replays only events after lastEventId', async () => {
-    const transport = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     const engine = await makeEngine('A', transport);
     await engine.dispatch('c3b', '1 + 1');
     await sleep(20);
@@ -101,21 +101,21 @@ describe('RemoteReplEngine', () => {
   });
 
   it('merges a client-visible {ping} heartbeat (id 0) into the stream, never buffering it', async () => {
-    const transport = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     const engine = await makeEngine('A', transport, { heartbeatInterval: 10 });
 
     const got = await takeN(engine.events('hb', null), 1);
     expect(got[0]).toEqual({ id: 0, type: 'system', commandId: null, data: { ping: true } });
     // A second subscriber replays nothing: pings are per-subscriber only,
     // never written to the channel's replay buffer.
-    const replayed: WebReplEvent[] = [];
+    const replayed: RemoteReplEvent[] = [];
     engine.openStream('hb', null, { next: (e) => replayed.push(e), complete: () => {} }).close();
     expect(replayed).toEqual([]);
     await engine.stop();
   });
 
   it('routes execution to the owning instance only', async () => {
-    const transport = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     const a = await makeEngine('A', transport);
     const b = await makeEngine('B', transport);
 
@@ -124,7 +124,7 @@ describe('RemoteReplEngine', () => {
     await sleep(20);
     // A command posted at B for the same channel must still execute on A
     // (the owner), so the variable persists.
-    const events: WebReplEvent[] = [];
+    const events: RemoteReplEvent[] = [];
     const stop = collect(b.events('c2', null), events);
     await sleep(0);
     await b.dispatch('c2', 'v + 5');
@@ -137,12 +137,12 @@ describe('RemoteReplEngine', () => {
   });
 
   it("tags each command's output with its own commandId under same-channel overlap", async () => {
-    const transport = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     const engine = await makeEngine('A', transport, {}, () => ({
       sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
     }));
 
-    const events: WebReplEvent[] = [];
+    const events: RemoteReplEvent[] = [];
     const stop = collect(engine.events('c4', null), events);
     await sleep(0);
 
@@ -159,7 +159,7 @@ describe('RemoteReplEngine', () => {
   });
 
   it('keeps the channel alive after a command whose execution throws', async () => {
-    const transport = new InMemoryWebReplAdapter();
+    const transport = new RemoteReplInMemoryTransport();
     let calls = 0;
     const factory = () => {
       calls++;
@@ -168,7 +168,7 @@ describe('RemoteReplEngine', () => {
     };
     const engine = await makeEngine('A', transport, {}, factory);
 
-    const events: WebReplEvent[] = [];
+    const events: RemoteReplEvent[] = [];
     const stop = collect(engine.events('c5', null), events);
     await sleep(0);
 
@@ -189,7 +189,7 @@ describe('RemoteReplEngine', () => {
 
   describe('channel GC (eviction)', () => {
     it('evicts a subscriber-less, session-less, empty-buffer channel synchronously when its last subscriber closes', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const engine = await makeEngine('A', transport);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const internals = engine as any;
@@ -202,7 +202,7 @@ describe('RemoteReplEngine', () => {
     });
 
     it('releases the subscription when the async iterator is returned early', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const engine = await makeEngine('A', transport);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const internals = engine as any;
@@ -216,7 +216,7 @@ describe('RemoteReplEngine', () => {
     });
 
     it('does not evict a channel that still has buffered replay history', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const engine = await makeEngine('A', transport);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const internals = engine as any;
@@ -229,7 +229,7 @@ describe('RemoteReplEngine', () => {
     });
 
     it('keeps an in-flight command session-consistent even if the last subscriber closes mid-dispatch', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const engine = await makeEngine('A', transport);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const internals = engine as any;
@@ -254,7 +254,7 @@ describe('RemoteReplEngine', () => {
       await sleep(30);
       expect(internals.channels.get(channel)).toBe(stateBefore);
       expect(stateBefore.session).toBeDefined();
-      const output = (stateBefore.buffer.since(null) as WebReplEvent[]).find((e) => e.type === 'output');
+      const output = (stateBefore.buffer.since(null) as RemoteReplEvent[]).find((e) => e.type === 'output');
       expect(output?.commandId).toBe('race-cmd-1');
       expect(String(output?.data)).toContain('2');
       await engine.stop();
@@ -265,7 +265,7 @@ describe('RemoteReplEngine', () => {
     const opts = { ownerHeartbeatInterval: 60_000, ownerLeaseTtl: 150_000 };
 
     it('takes over a channel after its owner goes stale', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const clock = makeSharedClock();
       const a = await makeEngine('A', transport, opts, defaultContext, clock.now);
       const b = await makeEngine('B', transport, opts, defaultContext, clock.now);
@@ -275,7 +275,7 @@ describe('RemoteReplEngine', () => {
       // A "dies": never heartbeats again.
       clock.advance(150_001);
 
-      const events: WebReplEvent[] = [];
+      const events: RemoteReplEvent[] = [];
       const stop = collect(b.events('lease-c1', null), events);
       await sleep(0);
       const { commandId: takeoverId } = await b.dispatch('lease-c1', 'const w = 99; w');
@@ -293,7 +293,7 @@ describe('RemoteReplEngine', () => {
     });
 
     it('does not preempt a live owner within the lease window', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const clock = makeSharedClock();
       const a = await makeEngine('A', transport, opts, defaultContext, clock.now);
       const b = await makeEngine('B', transport, opts, defaultContext, clock.now);
@@ -302,7 +302,7 @@ describe('RemoteReplEngine', () => {
       await sleep(20);
       clock.advance(50_000);
 
-      const events: WebReplEvent[] = [];
+      const events: RemoteReplEvent[] = [];
       const stop = collect(b.events('lease-c2', null), events);
       await sleep(0);
       const { commandId } = await b.dispatch('lease-c2', 'v + 5');
@@ -316,7 +316,7 @@ describe('RemoteReplEngine', () => {
     });
 
     it('a real owner heartbeat tick refreshes the lease, preventing a later takeover', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const clock = makeSharedClock();
       // Short real heartbeat so the engine's own setInterval fires during the test.
       const tight = { ownerHeartbeatInterval: 20, ownerLeaseTtl: 150_000 };
@@ -331,7 +331,7 @@ describe('RemoteReplEngine', () => {
       // the heartbeat refreshed B's ownerSeenAt.
       clock.advance(90_000);
 
-      const events: WebReplEvent[] = [];
+      const events: RemoteReplEvent[] = [];
       const stop = collect(b.events('lease-c3', null), events);
       await sleep(0);
       const { commandId } = await b.dispatch('lease-c3', 'v + 1');
@@ -347,7 +347,7 @@ describe('RemoteReplEngine', () => {
       const warnings: string[] = [];
       const engine = new RemoteReplEngine(
         { enabled: true, instanceId: 'A', ownerHeartbeatInterval: 10_000, ownerLeaseTtl: 10_001 },
-        new InMemoryWebReplAdapter(),
+        new RemoteReplInMemoryTransport(),
         () => ({}),
         () => 0,
         { warn: (m) => warnings.push(m), error: () => {} },
@@ -360,12 +360,12 @@ describe('RemoteReplEngine', () => {
 
   describe('enabled', () => {
     it('exposes the configured `enabled` flag read-only, so adapters derive it from the engine', async () => {
-      const on = await makeEngine('ON', new InMemoryWebReplAdapter());
+      const on = await makeEngine('ON', new RemoteReplInMemoryTransport());
       expect(on.enabled).toBe(true);
       await on.stop();
       const off = new RemoteReplEngine(
         { enabled: false, instanceId: 'OFF' },
-        new InMemoryWebReplAdapter(),
+        new RemoteReplInMemoryTransport(),
         defaultContext,
         undefined,
         silentLogger,
@@ -380,13 +380,13 @@ describe('RemoteReplEngine', () => {
   });
 
   describe('when disabled at runtime', () => {
-    const disabled = (transport: InMemoryWebReplAdapter) =>
+    const disabled = (transport: RemoteReplInMemoryTransport) =>
       new RemoteReplEngine({ enabled: false, instanceId: 'D' }, transport, defaultContext, undefined, silentLogger);
 
     it('subscribes to nothing and starts no timers on start()', async () => {
       vi.useFakeTimers();
       try {
-        const transport = new InMemoryWebReplAdapter();
+        const transport = new RemoteReplInMemoryTransport();
         const subscribeSpy = vi.spyOn(transport, 'subscribe');
         const engine = disabled(transport);
         await engine.start();
@@ -398,22 +398,22 @@ describe('RemoteReplEngine', () => {
       }
     });
 
-    it('dispatch() rejects with ReplDisabledError and never publishes', async () => {
-      const transport = new InMemoryWebReplAdapter();
+    it('dispatch() rejects with RemoteReplDisabledError and never publishes', async () => {
+      const transport = new RemoteReplInMemoryTransport();
       const publishSpy = vi.spyOn(transport, 'publish');
       const engine = disabled(transport);
       await engine.start();
-      await expect(engine.dispatch('d', '1 + 1')).rejects.toThrow(ReplDisabledError);
+      await expect(engine.dispatch('d', '1 + 1')).rejects.toThrow(RemoteReplDisabledError);
       expect(publishSpy).not.toHaveBeenCalled();
       await engine.stop();
     });
 
-    it('events() and openStream() throw ReplDisabledError synchronously', async () => {
-      const engine = disabled(new InMemoryWebReplAdapter());
+    it('events() and openStream() throw RemoteReplDisabledError synchronously', async () => {
+      const engine = disabled(new RemoteReplInMemoryTransport());
       await engine.start();
-      expect(() => engine.events('d', null)).toThrow(ReplDisabledError);
+      expect(() => engine.events('d', null)).toThrow(RemoteReplDisabledError);
       expect(() => engine.openStream('d', null, { next: () => {}, complete: () => {} })).toThrow(
-        ReplDisabledError,
+        RemoteReplDisabledError,
       );
       await engine.stop();
     });
@@ -421,7 +421,7 @@ describe('RemoteReplEngine', () => {
 
   describe('events() iterator contract', () => {
     it('subscribes eagerly: an event published before the first next() is delivered', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const engine = await makeEngine('A', transport);
       const iter = engine.events('eager', null);
       const { commandId } = await engine.dispatch('eager', '1 + 1');
@@ -433,7 +433,7 @@ describe('RemoteReplEngine', () => {
     });
 
     it('return() while a next() is pending settles that next() with done and releases the channel', async () => {
-      const transport = new InMemoryWebReplAdapter();
+      const transport = new RemoteReplInMemoryTransport();
       const engine = await makeEngine('A', transport);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const internals = engine as any;
@@ -448,8 +448,8 @@ describe('RemoteReplEngine', () => {
 
   describe('stop()', () => {
     it('completes open iterators and tears down the transport', async () => {
-      const transport = new InMemoryWebReplAdapter();
-      const destroySpy = vi.spyOn(transport, 'onModuleDestroy');
+      const transport = new RemoteReplInMemoryTransport();
+      const destroySpy = vi.spyOn(transport, 'close');
       const engine = await makeEngine('A', transport);
 
       const iter = engine.events('s1', null);
@@ -459,6 +459,44 @@ describe('RemoteReplEngine', () => {
 
       expect(await first).toEqual({ value: undefined, done: true });
       expect(destroySpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('transport (ticket #36)', () => {
+    it('defaults to an in-memory transport when none is given, so one instance needs no wiring', async () => {
+      const engine = new RemoteReplEngine({ enabled: true, instanceId: 'solo' }, undefined, defaultContext, undefined, silentLogger);
+      await engine.start();
+      const iter = engine.events('ch', null);
+      await engine.dispatch('ch', 'marker()');
+      const events = await takeN(iter, 2);
+      expect(events[1].data).toContain('ctx-ok');
+      await engine.stop();
+    });
+
+    it('stop() calls close() on the transport', async () => {
+      const calls: string[] = [];
+      const transport = {
+        publish: async () => {},
+        subscribe: async () => {},
+        close: () => void calls.push('close'),
+      };
+      const engine = new RemoteReplEngine({ enabled: true }, transport, defaultContext, undefined, silentLogger);
+      await engine.start();
+      await engine.stop();
+      expect(calls).toEqual(['close']);
+    });
+
+    it('stop() falls back to onModuleDestroy() for a legacy transport without close()', async () => {
+      const calls: string[] = [];
+      const legacy = {
+        publish: async () => {},
+        subscribe: async () => {},
+        onModuleDestroy: () => void calls.push('onModuleDestroy'),
+      };
+      const engine = new RemoteReplEngine({ enabled: true }, legacy, defaultContext, undefined, silentLogger);
+      await engine.start();
+      await engine.stop();
+      expect(calls).toEqual(['onModuleDestroy']);
     });
   });
 });
