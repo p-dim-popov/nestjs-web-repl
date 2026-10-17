@@ -25,8 +25,12 @@ import {
 } from './harness';
 import { REMOTE_REPL_TOPICS } from '@remote-repl/core';
 import { transports, type Transport } from './transports';
+import { redisVerdict } from './redis-preflight';
 
-describe.each(transports)('contract over $name', (transport: Transport) => {
+// 'skip' with one warning when no Redis answers REDIS_URL; throws under REDIS_REQUIRED=1.
+const redis = await redisVerdict();
+
+describe.skipIf(redis === 'skip').each(transports)('contract over $name', (transport: Transport) => {
   describe('ownership & single execution', () => {
     let pair: Pair;
     beforeAll(async () => {

@@ -1,0 +1,6 @@
+# The single runtime pin for this repo (ADR 0006): `mise install` gives a
+# contributor and every CI job the same Node, Bun and Deno. Bump deliberately.
+[tools]
+node = "26"
+bun = "1.4.3"
+deno = "2.9.7"

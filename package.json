@@ -12,6 +12,7 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm test --workspaces",
+    "test:runtime": "node scripts/runtime-suite.mjs",
     "typecheck": "npm run typecheck --workspaces",
     "example": "npm run example --workspace @remote-repl/nestjs",
     "example:express": "npm run example --workspace @remote-repl/express",
