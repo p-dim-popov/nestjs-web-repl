@@ -51,7 +51,7 @@ export class ReplSession {
   private queue: Promise<void> = Promise.resolve();
   private buffer = '';
   private resolveCurrent: (() => void) | null = null;
-  private watchdog: NodeJS.Timeout | null = null;
+  private watchdog: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
 
   constructor(private readonly opts: ReplSessionOptions) {
