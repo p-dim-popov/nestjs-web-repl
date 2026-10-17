@@ -22,7 +22,7 @@ export function generateProtocolSchema() {
     path: join(pkgRoot, 'src', 'protocol', 'messages.ts'),
     tsconfig: join(pkgRoot, 'tsconfig.json'),
     type: '*',
-    schemaId: 'https://github.com/p-dim-popov/nestjs-web-repl/blob/main/packages/core/schema/protocol.schema.json',
+    schemaId: 'https://github.com/p-dim-popov/node-remote-repl/blob/main/packages/core/schema/protocol.schema.json',
     topRef: true,
     expose: 'export',
     jsDoc: 'extended',

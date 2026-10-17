@@ -53,7 +53,7 @@ You can try the REPL without an install. The link below opens a full NestJS app
 that runs the REPL in a StackBlitz sandbox. The editor and the app run in your
 browser. Nothing touches a shared server.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/p-dim-popov/nestjs-web-repl/tree/main/examples/stackblitz)
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/p-dim-popov/node-remote-repl/tree/main/examples/stackblitz)
 
 The first boot takes about 30–60 seconds for the dependency install and startup.
 After that, the REPL is live. The [demo project](./examples/stackblitz) and its

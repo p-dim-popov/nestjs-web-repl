@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
   "changelog": [
     "@changesets/changelog-github",
-    { "repo": "p-dim-popov/nestjs-web-repl" }
+    { "repo": "p-dim-popov/node-remote-repl" }
   ],
   "commit": false,
   "fixed": [["@remote-repl/nestjs", "nestjs-web-repl"]],

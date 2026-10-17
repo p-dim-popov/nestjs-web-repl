@@ -453,7 +453,7 @@ is required (see `CONTRIBUTING.md`).
 
 ### Issue tracker
 
-GitHub Issues on `p-dim-popov/nestjs-web-repl`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+GitHub Issues on `p-dim-popov/node-remote-repl`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

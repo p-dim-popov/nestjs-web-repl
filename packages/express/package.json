@@ -17,9 +17,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/p-dim-popov/nestjs-web-repl.git",
+    "url": "git+https://github.com/p-dim-popov/node-remote-repl.git",
     "directory": "packages/express"
   },
+  "bugs": {
+    "url": "https://github.com/p-dim-popov/node-remote-repl/issues"
+  },
+  "homepage": "https://github.com/p-dim-popov/node-remote-repl#readme",
   "publishConfig": {
     "access": "public"
   },

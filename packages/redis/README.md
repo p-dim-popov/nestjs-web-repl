@@ -29,7 +29,7 @@ opens its own subscriber connection and closes only that one on shutdown.
 
 Two apps on one Redis must use different prefixes. Replicas of one app must
 use the same prefix. Full documentation is in the repository README:
-https://github.com/p-dim-popov/nestjs-web-repl#readme
+https://github.com/p-dim-popov/node-remote-repl#readme
 
 ## License
 

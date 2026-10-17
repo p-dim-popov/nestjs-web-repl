@@ -127,3 +127,29 @@ describe('agent skills (skills.sh layout)', () => {
     expect(body).toContain('prefix');
   });
 });
+
+// The repo is being renamed to p-dim-popov/node-remote-repl (the skills.sh
+// install paths already use it). Every URL in the tree that names the repo
+// must use the new slug so the two cannot drift. The root CHANGELOG.md keeps
+// the old slug in its released history; everything else is scanned.
+describe('repository slug', () => {
+  const OLD_SLUG = ['p-dim-popov', 'nestjs-web-repl'].join('/');
+  const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
+  const walk = (dir: string, out: string[] = []): string[] => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, out);
+      else if (entry.isFile()) out.push(full);
+    }
+    return out;
+  };
+
+  it('no file outside the root CHANGELOG history references p-dim-popov/node-remote-repl', () => {
+    const offenders = walk(repoRoot)
+      .filter((f) => f !== join(repoRoot, 'CHANGELOG.md'))
+      .filter((f) => readFileSync(f, 'utf8').includes(OLD_SLUG))
+      .map((f) => f.slice(repoRoot.length + 1));
+    expect(offenders).toEqual([]);
+  });
+});
