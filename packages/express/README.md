@@ -44,7 +44,7 @@ returns 404 on every route. For several replicas, pass a transport from
 `@remote-repl/redis` instead of the in-memory one.
 
 Full documentation, the options table and the security notes are in the
-repository README: https://github.com/p-dim-popov/node-remote-repl#readme
+repository README: https://github.com/p-dim-popov/remote-repl#readme
 
 ## License
 

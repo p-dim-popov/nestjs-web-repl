@@ -42,7 +42,7 @@ The `adapter` extra takes a transport from `@remote-repl/redis` for several
 replicas.
 
 Full documentation, the options table and the security notes are in the
-repository README: https://github.com/p-dim-popov/node-remote-repl#readme
+repository README: https://github.com/p-dim-popov/remote-repl#readme
 
 ## License
 

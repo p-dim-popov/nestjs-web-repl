@@ -72,7 +72,7 @@ describe('workspace layout', () => {
 });
 
 // Agent skills are plain files under skills/<dir>/SKILL.md at the repo root,
-// installed by consumers with `npx skills add p-dim-popov/node-remote-repl/skills/<dir>`.
+// installed by consumers with `npx skills add p-dim-popov/remote-repl/skills/<dir>`.
 describe('agent skills (skills.sh layout)', () => {
   const skill = (dir: string) =>
     readFileSync(join(repoRoot, 'skills', dir, 'SKILL.md'), 'utf8');
@@ -128,12 +128,13 @@ describe('agent skills (skills.sh layout)', () => {
   });
 });
 
-// The repo is being renamed to p-dim-popov/node-remote-repl (the skills.sh
-// install paths already use it). Every URL in the tree that names the repo
-// must use the new slug so the two cannot drift. The root CHANGELOG.md keeps
-// the old slug in its released history; everything else is scanned.
+// The repo is being renamed to p-dim-popov/remote-repl (ADR 0004; the
+// skills.sh install paths already use it). Every URL in the tree that names
+// the repo must use that slug so they cannot drift. The root CHANGELOG.md
+// keeps the original slug in its released history; everything else is
+// scanned for both superseded slugs.
 describe('repository slug', () => {
-  const OLD_SLUG = ['p-dim-popov', 'nestjs-web-repl'].join('/');
+  const OLD_SLUGS = ['nestjs-web-repl', 'node-remote-repl'].map((r) => ['p-dim-popov', r].join('/'));
   // Tracked files only: untracked or ignored local files (scratch dirs,
   // build output) are not part of what ships, so they must not fail the gate.
   const trackedFiles = (): string[] =>
@@ -144,10 +145,13 @@ describe('repository slug', () => {
       .map((rel) => join(repoRoot, rel))
       .filter((f) => existsSync(f));
 
-  it('no tracked file outside the root CHANGELOG history references the old slug', () => {
+  it('no tracked file outside the root CHANGELOG history references a superseded slug', () => {
     const offenders = trackedFiles()
       .filter((f) => f !== join(repoRoot, 'CHANGELOG.md'))
-      .filter((f) => readFileSync(f, 'utf8').includes(OLD_SLUG))
+      .filter((f) => {
+        const body = readFileSync(f, 'utf8');
+        return OLD_SLUGS.some((slug) => body.includes(slug));
+      })
       .map((f) => f.slice(repoRoot.length + 1));
     expect(offenders).toEqual([]);
   });

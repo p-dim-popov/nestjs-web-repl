@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/p-dim-popov/node-remote-repl/blob/main/packages/core/schema/protocol.schema.json",
+  "$id": "https://github.com/p-dim-popov/remote-repl/blob/main/packages/core/schema/protocol.schema.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "Topic": {

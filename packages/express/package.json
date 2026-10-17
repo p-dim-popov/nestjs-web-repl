@@ -17,13 +17,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/p-dim-popov/node-remote-repl.git",
+    "url": "git+https://github.com/p-dim-popov/remote-repl.git",
     "directory": "packages/express"
   },
   "bugs": {
-    "url": "https://github.com/p-dim-popov/node-remote-repl/issues"
+    "url": "https://github.com/p-dim-popov/remote-repl/issues"
   },
-  "homepage": "https://github.com/p-dim-popov/node-remote-repl#readme",
+  "homepage": "https://github.com/p-dim-popov/remote-repl#readme",
   "publishConfig": {
     "access": "public"
   },

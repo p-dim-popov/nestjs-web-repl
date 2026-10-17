@@ -63,7 +63,7 @@ describe('README.md', () => {
 
   it('uses the same skills.sh install commands as the skills', () => {
     for (const dir of readdirSync(join(repoRoot, 'skills'))) {
-      expect(readme).toContain(`npx skills add p-dim-popov/node-remote-repl/skills/${dir}`);
+      expect(readme).toContain(`npx skills add p-dim-popov/remote-repl/skills/${dir}`);
     }
   });
 

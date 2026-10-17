@@ -119,7 +119,8 @@ short `README.md` that links back to it), `CHANGELOG.md` (pre-split history
 only; per-package `CHANGELOG.md` files are generated from here on),
 `CONTRIBUTING.md`, `GLOSSARY.md` (the ubiquitous language), `docs/adr/`
 (architecture decision records: `0001` separate packages over subpath exports,
-`0002` no rxjs in core, `0003` no wire protocol version), `docs/agents/` (agent
+`0002` no rxjs in core, `0003` no wire protocol version, `0004` the
+`remote-repl` name and why the web UI is one client surface, not the product), `docs/agents/` (agent
 workflow notes), `skills/` (consumer-facing agent skills, see below) and
 `examples/stackblitz/` (a standalone demo against the published package, not
 a workspace). `packages/nestjs/src/docs.spec.ts` checks that every path
@@ -333,7 +334,7 @@ change or that spec goes red. Packages live under `packages/`:
   `skills/nestjs-web-repl/` (`@remote-repl/nestjs` and the shim; frontmatter
   `name: nestjs-web-repl` is the identity skills.sh keys on, keep it) and
   `skills/remote-repl-express/` (`@remote-repl/express`). Consumers install
-  them with `npx skills add p-dim-popov/node-remote-repl/skills/<dir>`
+  them with `npx skills add p-dim-popov/remote-repl/skills/<dir>`
   (skills.sh indexes `SKILL.md` files straight from the GitHub repo; nothing
   is packed into npm tarballs, and there is no install CLI). Both must lead
   with the "Security first" section before "Wire it up"; when a package's
@@ -459,7 +460,7 @@ is required (see `CONTRIBUTING.md`).
 
 ### Issue tracker
 
-GitHub Issues on `p-dim-popov/node-remote-repl`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+GitHub Issues on `p-dim-popov/remote-repl`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

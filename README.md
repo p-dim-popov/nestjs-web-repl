@@ -53,7 +53,7 @@ You can try the REPL without an install. The link below opens a full NestJS app
 that runs the REPL in a StackBlitz sandbox. The editor and the app run in your
 browser. Nothing touches a shared server.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/p-dim-popov/node-remote-repl/tree/main/examples/stackblitz)
+[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/p-dim-popov/remote-repl/tree/main/examples/stackblitz)
 
 The first boot takes about 30–60 seconds for the dependency install and startup.
 After that, the REPL is live. The [demo project](./examples/stackblitz) and its
@@ -546,10 +546,10 @@ They live as plain files under `skills/` and install through the
 
 ```bash
 # NestJS (@remote-repl/nestjs or the nestjs-web-repl shim)
-npx skills add p-dim-popov/node-remote-repl/skills/nestjs-web-repl
+npx skills add p-dim-popov/remote-repl/skills/nestjs-web-repl
 
 # Express (@remote-repl/express)
-npx skills add p-dim-popov/node-remote-repl/skills/remote-repl-express
+npx skills add p-dim-popov/remote-repl/skills/remote-repl-express
 ```
 
 Each command writes the skill's `SKILL.md` into your agent's skills directory.

@@ -26,10 +26,10 @@ import { IoRedisWebReplAdapter } from 'nestjs-web-repl/redis';
 ships no authentication. Keep `enabled: false` outside trusted environments and
 put the routes behind your own guard. Full documentation, options and the
 security notes are in the repository README:
-https://github.com/p-dim-popov/node-remote-repl#readme
+https://github.com/p-dim-popov/remote-repl#readme
 
 This package ships no `bin`. Install the Claude Code skill with
-`npx skills add p-dim-popov/node-remote-repl/skills/nestjs-web-repl`.
+`npx skills add p-dim-popov/remote-repl/skills/nestjs-web-repl`.
 
 ## License
 
