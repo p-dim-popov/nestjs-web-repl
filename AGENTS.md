@@ -62,7 +62,13 @@ prior build. The build resolves the symlink to `packages/<name>/dist`
 dependencies are compiled first; a package another one references must set
 `composite: true` in its `tsconfig.build.json` and `composite: false` back in
 its `tsconfig.typecheck.json`). Each package's `tsbuildinfo` lives inside
-its `dist/` so `rm -rf dist` is a true clean. Copy this pattern for any new
+its `dist/` so `rm -rf dist` is a true clean, and every package's `build`
+script does exactly that first (a `node -e` `fs.rmSync`, cross-platform):
+`tsc -b` is incremental and never removes the output of a deleted source, so
+without the wipe a removed file's `dist/*.js` would ship. `tsc -b --clean`
+is no substitute (it only knows outputs of sources that still exist).
+`packages/nestjs/src/packaging.spec.ts` checks, when a `dist/` exists (CI
+builds before testing), that no built output lacks a source. Copy this pattern for any new
 package. `unplugin-swc` reads the package's `tsconfig.json` for
 `experimentalDecorators`: a package whose specs use Nest decorators needs
 them there, not only in the typecheck config.

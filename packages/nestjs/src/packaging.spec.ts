@@ -153,3 +153,32 @@ describe('repository slug', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+// `tsc -b` is incremental and never deletes the output of a source file that
+// was removed (seen with a stale dist/cli after the CLI was deleted), so every
+// package's `build` empties its dist first. Guarded on dist existing: `npm
+// test` needs no prior build, but CI builds first, so there it is live.
+describe('built output (when a dist exists)', () => {
+  const packagesDir = join(repoRoot, 'packages');
+  const listFiles = (dir: string, out: string[] = []): string[] => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) listFiles(full, out);
+      else out.push(full);
+    }
+    return out;
+  };
+  const built = readdirSync(packagesDir).filter((d) => existsSync(join(packagesDir, d, 'dist')));
+
+  it.each(built)('packages/%s/dist has no output whose source is gone', (name) => {
+    const dist = join(packagesDir, name, 'dist');
+    const src = join(packagesDir, name, 'src');
+    const stale = listFiles(dist)
+      .map((f) => f.slice(dist.length + 1))
+      .filter((rel) => /\.(js|d\.ts)$/.test(rel))
+      // core copies the Monaco tree into dist/ui/vs; it has no .ts sources.
+      .filter((rel) => !rel.startsWith(join('ui', 'vs')))
+      .filter((rel) => !existsSync(join(src, rel.replace(/\.d\.ts$|\.js$/, '.ts'))));
+    expect(stale).toEqual([]);
+  });
+});
