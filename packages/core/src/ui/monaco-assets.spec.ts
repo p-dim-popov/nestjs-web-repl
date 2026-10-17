@@ -66,3 +66,30 @@ describe('monacoVsDir', () => {
     }
   });
 });
+
+// Under a runtime or module format where neither CJS global is available
+// (no `__dirname`, no `require.resolve`), the asset route must degrade to
+// "asset not found" (null), never throw out of the handler.
+describe('monacoVsDir without a bundled copy or a working package resolver', () => {
+  const failingResolver = () => {
+    throw new Error('require.resolve is unavailable');
+  };
+
+  it('returns null instead of throwing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'core-monaco-'));
+    try {
+      expect(monacoVsDir(dir, failingResolver)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('makes resolveMonacoFile report every asset as missing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'core-monaco-'));
+    try {
+      expect(resolveMonacoFile('loader.js', dir, failingResolver)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
