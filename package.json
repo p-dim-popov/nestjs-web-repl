@@ -1,105 +1,27 @@
 {
-  "name": "nestjs-web-repl",
-  "version": "2.3.2",
-  "description": "Expose a live NestJS REPL over the network (HTTP + SSE + Monaco UI).",
-  "keywords": [
-    "nestjs",
-    "nest",
-    "repl",
-    "web-repl",
-    "node-repl",
-    "remote-repl",
-    "sse",
-    "server-sent-events",
-    "monaco",
-    "debugging",
-    "devtools",
-    "introspection",
-    "dynamic-module",
-    "redis"
-  ],
+  "name": "remote-repl-workspace",
+  "private": true,
+  "description": "Workspace root for the remote-repl monorepo (see packages/).",
   "license": "MIT",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./redis": {
-      "types": "./dist/redis.d.ts",
-      "default": "./dist/redis.js"
-    },
-    "./package.json": "./package.json"
-  },
-  "typesVersions": {
-    "*": {
-      "redis": [
-        "dist/redis.d.ts"
-      ]
-    }
-  },
-  "bin": {
-    "nestjs-web-repl": "dist/cli/index.js"
-  },
-  "files": [
-    "dist",
-    "skill"
+  "workspaces": [
+    "packages/*"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/p-dim-popov/nestjs-web-repl.git"
-  },
-  "bugs": {
-    "url": "https://github.com/p-dim-popov/nestjs-web-repl/issues"
-  },
-  "homepage": "https://github.com/p-dim-popov/nestjs-web-repl#readme",
-  "publishConfig": {
-    "access": "public"
-  },
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-monaco.mjs",
-    "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest",
-    "example": "ts-node -T example/main.ts"
-  },
-  "peerDependencies": {
-    "@nestjs/common": "^10 || ^11",
-    "@nestjs/core": "^10 || ^11",
-    "ioredis": "^5",
-    "redis": "^4 || ^5",
-    "rxjs": "^7"
-  },
-  "peerDependenciesMeta": {
-    "ioredis": {
-      "optional": true
-    },
-    "redis": {
-      "optional": true
-    }
+    "build": "npm run build --workspaces",
+    "test": "npm test --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "example": "npm run example --workspace @remote-repl/nestjs",
+    "example:express": "npm run example --workspace @remote-repl/express",
+    "schema:check": "npm run schema:check --workspace @remote-repl/core",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "npm run build && changeset publish"
   },
   "devDependencies": {
-    "@nestjs/common": "^11",
-    "@nestjs/core": "^11",
-    "@nestjs/platform-express": "^11",
-    "@nestjs/testing": "^11",
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/git": "^10.0.1",
-    "@swc/core": "^1.15.43",
-    "@types/node": "^20",
-    "@types/supertest": "^6",
-    "ioredis-mock": "^8.13.1",
-    "monaco-editor": "0.52.0",
-    "reflect-metadata": "^0.2",
-    "rxjs": "^7",
-    "semantic-release": "^25.0.8",
-    "supertest": "^7",
-    "ts-node": "^10.9.2",
-    "typescript": "^5",
-    "unplugin-swc": "^1.5.9",
-    "vitest": "^2"
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3"
   }
 }

@@ -13,6 +13,20 @@ jobs:
       fail-fast: false
       matrix:
         node: ['22.x', '24.x']
+    # Real Redis for the contract suite (packages/nestjs/test/contract), which runs two app
+    # instances over the shipped ioredis and node-redis transports.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v4
 
@@ -29,29 +43,133 @@ jobs:
         run: npm run build
 
       - name: Typecheck
-        run: npx tsc -p tsconfig.build.json --noEmit
+        run: npm run typecheck
+
+      - name: Protocol schema drift check
+        # Regenerates packages/core/schema/protocol.schema.json from the
+        # TypeScript protocol types and fails if the committed file differs.
+        run: npm run schema:check
 
       - name: Test
         run: npm test
 
-  release-config:
-    name: validate release config
-    if: github.event_name == 'pull_request'
+  # Best-effort runtime legs (#32): the same suite on Bun and Deno. They are
+  # REPORTED, never blocking: `continue-on-error: true` on the job keeps a red
+  # leg from failing the workflow. Node (above) is the only release-blocking
+  # runtime. When these are green for a while they get promoted by removing
+  # `continue-on-error` -- no code change needed.
+  #
+  # How the tests are invoked (verified locally on Bun 1.4.3 / Deno 2.9.7):
+  # - The root `npm test` delegates to each package's `vitest run` through npm,
+  #   which would execute vitest under NODE (its bin has a node shebang). So
+  #   each leg runs vitest per package through the runtime itself:
+  #   - Bun: `bun --bun x vitest run`. `--bun` is REQUIRED: without it bunx
+  #     honours the node shebang and the whole leg silently runs on Node.
+  #   - Deno: `deno run -A npm:vitest run --pool=threads`. The default `forks`
+  #     pool leaves vitest's exit with "Uncaught BrokenPipe" (exit 1) after a
+  #     fully green run on Deno; the threads pool exits cleanly.
+  # - `npm ci` (hence Node) is still used to install the workspace.
+  # - The session spec runs FIRST as its own step: `node:repl` completion
+  #   detection is the one known parity risk (see AGENTS.md "Gotchas"). A red
+  #   there is attributed to the session layer; a red in the full suite with a
+  #   green session step is attributed elsewhere. The step summary says which.
+  runtime-matrix:
+    name: test (${{ matrix.runtime }}, best-effort)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: bun
+            vitest: bun --bun x vitest run
+          - runtime: deno
+            vitest: deno run -A npm:vitest run --pool=threads
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://127.0.0.1:6379
+      VITEST: ${{ matrix.vitest }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Node (installer only)
+        uses: actions/setup-node@v4
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+          node-version: 24.x
+          cache: npm
+
+      - name: Set up Bun
+        if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 24
-      - run: npm ci
-      - name: Load & validate semantic-release config
-        # Loads .releaserc.json and requires every plugin during setup, then
-        # no-ops because the PR branch is not `main`. A malformed config or a
-        # missing plugin fails here; a clean exit proves the pipeline is valid.
-        # No tokens: verifyConditions (which needs auth) only runs for the
-        # release branch, which this is not.
-        run: npx semantic-release --dry-run --no-ci
+          bun-version: latest
+
+      - name: Set up Deno
+        if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Runtime version
+        run: |
+          case "${{ matrix.runtime }}" in
+            bun) bun --version ;;
+            deno) deno --version ;;
+          esac
+
+      - name: Session spec (node:repl parity canary)
+        id: session
+        continue-on-error: true
+        working-directory: packages/core
+        run: $VITEST src/session/repl-session.spec.ts
+
+      - name: Full suite (unit + contract + e2e, every package)
+        id: suite
+        if: ${{ !cancelled() }}
+        run: |
+          for pkg in packages/*/; do
+            echo "::group::$pkg"
+            (cd "$pkg" && $VITEST --passWithNoTests)
+            echo "::endgroup::"
+          done
+
+      - name: Report (failure attribution)
+        if: always()
+        env:
+          SESSION: ${{ steps.session.outcome }}
+          SUITE: ${{ steps.suite.outcome }}
+        run: |
+          {
+            echo "## ${{ matrix.runtime }} (best-effort, non-blocking)"
+            echo
+            echo "| step | outcome |"
+            echo "|---|---|"
+            echo "| session spec (\`packages/core/src/session/repl-session.spec.ts\`) | $SESSION |"
+            echo "| full suite | $SUITE |"
+            echo
+            if [ "$SESSION" != "success" ]; then
+              echo "**Attribution: session layer.** \`node:repl\` completion detection"
+              echo "(sentinel prompt, continuation prompt, buffered-command state) is"
+              echo "verified only on Node. Do not patch the engine or weaken the spec:"
+              echo "the drop-in point is the session interface seam"
+              echo "(\`packages/core/src/session/\`, the \`ReplSession\` surface the engine"
+              echo "constructs) -- a runtime-specific session implementation goes there."
+            elif [ "$SUITE" != "success" ]; then
+              echo "**Attribution: outside the session layer** (the session spec passed)."
+              echo "Look at the failing package in the step log; the \`node:repl\` seam is not the cause."
+            else
+              echo "All green on this runtime. Promote it by removing \`continue-on-error\` from the job."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

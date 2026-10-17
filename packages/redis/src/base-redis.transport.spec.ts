@@ -1,0 +1,131 @@
+import { RemoteReplBaseRedisTransport } from './base-redis.transport';
+
+class FakeBase extends RemoteReplBaseRedisTransport {
+  publishes: Array<[string, string]> = [];
+  subscribeCalls: string[] = [];
+  teardowns = 0;
+  protected async doPublish(topic: string, message: string): Promise<void> {
+    this.publishes.push([topic, message]);
+  }
+  protected async ensureSubscribed(topic: string): Promise<void> {
+    this.subscribeCalls.push(topic);
+  }
+  protected async teardown(): Promise<void> {
+    this.teardowns++;
+  }
+  emit(topic: string, message: string): void {
+    this.dispatch(topic, message);
+  }
+}
+
+describe('RemoteReplBaseRedisTransport', () => {
+  it('delivers a dispatched message to a registered handler', async () => {
+    const a = new FakeBase();
+    const got: string[] = [];
+    await a.subscribe('remote-repl:cmd', (m) => got.push(m));
+    a.emit('remote-repl:cmd', 'hello');
+    expect(got).toEqual(['hello']);
+  });
+
+  it('calls ensureSubscribed exactly once per topic across multiple subscribe calls', async () => {
+    const a = new FakeBase();
+    await a.subscribe('remote-repl:cmd', () => {});
+    await a.subscribe('remote-repl:cmd', () => {});
+    await a.subscribe('remote-repl:out', () => {});
+    expect(a.subscribeCalls).toEqual(['remote-repl:cmd', 'remote-repl:out']);
+  });
+
+  it('fans out to every handler on a topic and none of another topic', async () => {
+    const a = new FakeBase();
+    const one: string[] = [];
+    const two: string[] = [];
+    const other: string[] = [];
+    await a.subscribe('remote-repl:sys', (m) => one.push(m));
+    await a.subscribe('remote-repl:sys', (m) => two.push(m));
+    await a.subscribe('remote-repl:out', (m) => other.push(m));
+    a.emit('remote-repl:sys', 'claim');
+    expect(one).toEqual(['claim']);
+    expect(two).toEqual(['claim']);
+    expect(other).toEqual([]);
+  });
+
+  it('delegates publish to doPublish', async () => {
+    const a = new FakeBase();
+    await a.publish('remote-repl:cmd', 'x');
+    expect(a.publishes).toEqual([['remote-repl:cmd', 'x']]);
+  });
+
+  it('tears down and clears state on close', async () => {
+    const a = new FakeBase();
+    const got: string[] = [];
+    await a.subscribe('remote-repl:cmd', (m) => got.push(m));
+    await a.close();
+    expect(a.teardowns).toBe(1);
+    a.emit('remote-repl:cmd', 'after');
+    expect(got).toEqual([]);
+  });
+
+  it('isolates a throwing handler: dispatch does not throw and later handlers still run', async () => {
+    const a = new FakeBase();
+    const got: string[] = [];
+    await a.subscribe('remote-repl:cmd', () => {
+      throw new Error('boom');
+    });
+    await a.subscribe('remote-repl:cmd', (m) => got.push(m));
+    expect(() => a.emit('remote-repl:cmd', 'x')).not.toThrow();
+    expect(got).toEqual(['x']);
+  });
+
+  describe('logger', () => {
+    it('reports a handler fault through the injected logger, naming the bare topic', async () => {
+      const errors: string[] = [];
+      const a = new FakeBase({
+        prefix: 'tenant-a:',
+        logger: { warn: () => {}, error: (m) => errors.push(m) },
+      });
+      await a.subscribe('remote-repl:cmd', () => {
+        throw new Error('boom');
+      });
+      a.emit('tenant-a:remote-repl:cmd', 'x');
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain('"remote-repl:cmd"');
+      expect(errors[0]).toContain('boom');
+    });
+
+    it('defaults to console.error so a fault is never silently swallowed', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const a = new FakeBase();
+        await a.subscribe('remote-repl:cmd', () => {
+          throw new Error('boom');
+        });
+        a.emit('remote-repl:cmd', 'x');
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(String(spy.mock.calls[0][0])).toContain('boom');
+      } finally {
+        spy.mockRestore();
+      }
+    });
+  });
+
+  describe('topic prefix', () => {
+    it('prepends the prefix verbatim on the wire and strips it before dispatching to handlers', async () => {
+      const a = new FakeBase({ prefix: 'tenant-a:' });
+      const got: string[] = [];
+      await a.subscribe('remote-repl:cmd', (m) => got.push(m));
+      await a.publish('remote-repl:cmd', 'x');
+      expect(a.subscribeCalls).toEqual(['tenant-a:remote-repl:cmd']);
+      expect(a.publishes).toEqual([['tenant-a:remote-repl:cmd', 'x']]);
+      a.emit('tenant-a:remote-repl:cmd', 'hello');
+      expect(got).toEqual(['hello']);
+    });
+
+    it('without a prefix, topic names are byte-identical on the wire', async () => {
+      const a = new FakeBase();
+      await a.subscribe('remote-repl:out', () => {});
+      await a.publish('remote-repl:out', 'x');
+      expect(a.subscribeCalls).toEqual(['remote-repl:out']);
+      expect(a.publishes).toEqual([['remote-repl:out', 'x']]);
+    });
+  });
+});

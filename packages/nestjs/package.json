@@ -1,0 +1,84 @@
+{
+  "name": "@remote-repl/nestjs",
+  "version": "1.0.0",
+  "description": "NestJS module for remote-repl: RemoteReplModule, controller and DI-container context builder (HTTP + SSE + Monaco UI).",
+  "keywords": [
+    "nestjs",
+    "nest",
+    "repl",
+    "node-repl",
+    "remote-repl",
+    "sse",
+    "server-sent-events",
+    "monaco",
+    "debugging",
+    "devtools",
+    "introspection",
+    "dynamic-module",
+    "redis"
+  ],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/p-dim-popov/remote-repl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/p-dim-popov/remote-repl/issues"
+  },
+  "homepage": "https://github.com/p-dim-popov/remote-repl#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "example": "ts-node -T example/main.ts"
+  },
+  "dependencies": {
+    "@remote-repl/core": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^10 || ^11",
+    "@nestjs/core": "^10 || ^11",
+    "rxjs": "^7"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
+    "@nestjs/platform-express": "^11",
+    "@nestjs/testing": "^11",
+    "@remote-repl/express": "^1.0.0",
+    "@remote-repl/redis": "^1.0.0",
+    "@swc/core": "^1.15.43",
+    "@types/express": "^5",
+    "@types/node": "^20",
+    "@types/supertest": "^6",
+    "express": "^5",
+    "ioredis": "^5.11.1",
+    "redis": "^5.12.1",
+    "reflect-metadata": "^0.2",
+    "rxjs": "^7",
+    "supertest": "^7",
+    "ts-node": "^10.9.2",
+    "typescript": "^5",
+    "unplugin-swc": "^1.5.9",
+    "vitest": "^2"
+  }
+}

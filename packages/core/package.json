@@ -1,0 +1,51 @@
+{
+  "name": "@remote-repl/core",
+  "version": "1.0.0",
+  "description": "Framework-agnostic core of remote-repl: REPL sessions, protocol types, in-memory transport, browser UI and SSE helpers.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "schema",
+    "PROTOCOL.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/p-dim-popov/remote-repl.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/p-dim-popov/remote-repl/issues"
+  },
+  "homepage": "https://github.com/p-dim-popov/remote-repl#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node scripts/copy-monaco.mjs",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "schema:generate": "node scripts/generate-schema.mjs",
+    "schema:check": "node scripts/generate-schema.mjs --check",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "ajv": "^8.20.0",
+    "monaco-editor": "0.52.0",
+    "ts-json-schema-generator": "^2.9.0",
+    "typescript": "^5",
+    "vitest": "^2"
+  }
+}

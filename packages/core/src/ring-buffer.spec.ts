@@ -1,0 +1,47 @@
+import { EventRingBuffer } from './ring-buffer';
+import type { RemoteReplEvent } from './protocol/messages';
+
+const ev = (id: number): RemoteReplEvent => ({ id, type: 'output', commandId: null, data: `e${id}` });
+
+describe('EventRingBuffer', () => {
+  it('returns all events for a null cursor', () => {
+    const b = new EventRingBuffer(10);
+    b.push(ev(1)); b.push(ev(2));
+    expect(b.since(null).map((e) => e.id)).toEqual([1, 2]);
+  });
+
+  it('returns only events after the cursor', () => {
+    const b = new EventRingBuffer(10);
+    [1, 2, 3].forEach((i) => b.push(ev(i)));
+    expect(b.since(2).map((e) => e.id)).toEqual([3]);
+  });
+
+  it('drops oldest beyond capacity', () => {
+    const b = new EventRingBuffer(2);
+    [1, 2, 3].forEach((i) => b.push(ev(i)));
+    expect(b.since(null).map((e) => e.id)).toEqual([2, 3]);
+  });
+
+  it('clear empties the buffer', () => {
+    const b = new EventRingBuffer(10);
+    b.push(ev(1)); b.clear();
+    expect(b.since(null)).toEqual([]);
+  });
+
+  it('since(null) returns an independent copy, not the internal array', () => {
+    const b = new EventRingBuffer(10);
+    b.push(ev(1));
+    const snapshot = b.since(null);
+    snapshot.push(ev(2));
+    expect(b.since(null).map((e) => e.id)).toEqual([1]);
+  });
+
+  it('isEmpty() reflects push/clear', () => {
+    const b = new EventRingBuffer(10);
+    expect(b.isEmpty()).toBe(true);
+    b.push(ev(1));
+    expect(b.isEmpty()).toBe(false);
+    b.clear();
+    expect(b.isEmpty()).toBe(true);
+  });
+});

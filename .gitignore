@@ -5,3 +5,4 @@ dist
 # Private design docs & agent working notes (kept local, never published)
 docs/superpowers/
 .superpowers/
+*.tsbuildinfo

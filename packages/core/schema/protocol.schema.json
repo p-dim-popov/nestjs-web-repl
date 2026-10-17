@@ -1,0 +1,345 @@
+{
+  "$id": "https://github.com/p-dim-popov/remote-repl/blob/main/packages/core/schema/protocol.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "RemoteReplTopic": {
+      "type": "string",
+      "enum": [
+        "remote-repl:cmd",
+        "remote-repl:out",
+        "remote-repl:sys"
+      ],
+      "description": "The three fixed transport topic names (see `REMOTE_REPL_TOPICS`)."
+    },
+    "RemoteReplSseEventType": {
+      "type": "string",
+      "enum": [
+        "command",
+        "output",
+        "system"
+      ]
+    },
+    "RemoteReplCommandEventData": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "instanceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "instanceId"
+      ],
+      "additionalProperties": false,
+      "description": "`data` of a `command` event: the echoed command and the instance that runs it."
+    },
+    "RemoteReplOutputEventData": {
+      "type": "string",
+      "description": "`data` of an `output` event: one raw chunk of REPL output, verbatim."
+    },
+    "RemoteReplDoneEventData": {
+      "type": "object",
+      "properties": {
+        "done": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "done"
+      ],
+      "additionalProperties": false,
+      "description": "`data` of the `system` event that ends every executed command."
+    },
+    "RemoteReplErrorEventData": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "additionalProperties": false,
+      "description": "`data` of the `system` event emitted when a command could not execute."
+    },
+    "RemoteReplPingEventData": {
+      "type": "object",
+      "properties": {
+        "ping": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "ping"
+      ],
+      "additionalProperties": false,
+      "description": "`data` of the SSE-only heartbeat `system` event."
+    },
+    "RemoteReplCommandEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "command"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/RemoteReplCommandEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "Echo of a dispatched command, emitted by the owner right before it executes."
+    },
+    "RemoteReplOutputEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "output"
+        },
+        "commandId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "`null` only for a chunk written while no command was executing."
+        },
+        "data": {
+          "$ref": "#/definitions/RemoteReplOutputEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "A chunk of REPL output, tagged with the command executing when it was written."
+    },
+    "RemoteReplDoneEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "system"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/RemoteReplDoneEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "Completion signal, emitted once per executed command after its last output chunk."
+    },
+    "RemoteReplErrorEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "const": "system"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/definitions/RemoteReplErrorEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "Failure signal: the command did not execute (e.g. the context factory threw)."
+    },
+    "RemoteReplPingEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number",
+          "const": 0
+        },
+        "type": {
+          "type": "string",
+          "const": "system"
+        },
+        "commandId": {
+          "type": "null"
+        },
+        "data": {
+          "$ref": "#/definitions/RemoteReplPingEventData"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "SSE keep-alive. Local to one SSE connection: never published on a topic, never buffered for replay, always `id: 0` (the server stamps the SSE frame with the connection's last real id instead -- see PROTOCOL.md)."
+    },
+    "RemoteReplTransportEvent": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/RemoteReplCommandEvent"
+        },
+        {
+          "$ref": "#/definitions/RemoteReplOutputEvent"
+        },
+        {
+          "$ref": "#/definitions/RemoteReplDoneEvent"
+        },
+        {
+          "$ref": "#/definitions/RemoteReplErrorEvent"
+        }
+      ],
+      "description": "Every event that travels on the `remote-repl:out` topic (and is replayable)."
+    },
+    "RemoteReplSseEvent": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/RemoteReplTransportEvent"
+        },
+        {
+          "$ref": "#/definitions/RemoteReplPingEvent"
+        }
+      ],
+      "description": "Every event that can appear as an SSE `data:` payload."
+    },
+    "RemoteReplEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number"
+        },
+        "type": {
+          "$ref": "#/definitions/RemoteReplSseEventType"
+        },
+        "commandId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data": {}
+      },
+      "required": [
+        "id",
+        "type",
+        "commandId",
+        "data"
+      ],
+      "additionalProperties": false,
+      "description": "Structural superset of `RemoteReplSseEvent`: the engine's working type, where `data` is still untyped. Everything that is a valid `RemoteReplSseEvent` is a valid `RemoteReplEvent`; the reverse is what the schema rejects."
+    },
+    "RemoteReplCmdMessage": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string"
+        },
+        "commandId": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "originInstanceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel",
+        "commandId",
+        "command",
+        "originInstanceId"
+      ],
+      "additionalProperties": false,
+      "description": "Published on `remote-repl:cmd` by the instance that received the HTTP request."
+    },
+    "RemoteReplWireOutMessage": {
+      "$ref": "#/definitions/RemoteReplOutMessage%3CRemoteReplTransportEvent%3E",
+      "description": "The `remote-repl:out` message exactly as it travels."
+    },
+    "RemoteReplOutMessage<RemoteReplTransportEvent>": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string"
+        },
+        "event": {
+          "$ref": "#/definitions/RemoteReplTransportEvent"
+        }
+      },
+      "required": [
+        "channel",
+        "event"
+      ],
+      "additionalProperties": false,
+      "description": "Published on `remote-repl:out` by the channel's owner; fanned out to every instance. On the wire `event` is always a `RemoteReplTransportEvent` (`RemoteReplOutMessage<RemoteReplTransportEvent>`, the schema's shape); the engine works with the untyped default while it builds one."
+    },
+    "RemoteReplSysMessage": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "claim",
+            "release"
+          ]
+        },
+        "instanceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "channel",
+        "kind",
+        "instanceId"
+      ],
+      "additionalProperties": false,
+      "description": "Published on `remote-repl:sys`: ownership `claim` (also the lease heartbeat) and `release`."
+    }
+  }
+}
