@@ -243,11 +243,15 @@ describe.each(transports)('contract over $name', (transport: Transport) => {
   describe('`enabled` enforcement', () => {
     it('a disabled instance 404s on every route and puts no traffic on Redis', async () => {
       const observer = await observeRedis();
-      const topics = Object.values(TOPICS);
+      // Own topic prefix: other spec files share this Redis in parallel
+      // workers, so the subscriber count must be on topics only this
+      // instance could touch.
+      const prefix = `${uniqueChannel('off')}:`;
+      const topics = Object.values(TOPICS).map((t) => prefix + t);
       const log = await observer.watch(topics);
       const before = await observer.numsub(topics); // includes the observer itself
 
-      const t = await transport.make();
+      const t = await transport.make({ prefix });
       const disabled = await bootInstance(t.adapter, { instanceId: 'OFF', enabled: false });
       try {
         const channel = uniqueChannel('off');
