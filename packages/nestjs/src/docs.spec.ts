@@ -87,6 +87,7 @@ describe('GLOSSARY.md', () => {
     'Topic prefix',
     'Protocol',
     'UI bundle',
+    'UI page',
     'Shim',
   ])('defines the term %s', (term) => {
     expect(glossary).toMatch(new RegExp(`^\\*\\*${term}[^*]*\\*\\*:`, 'm'));

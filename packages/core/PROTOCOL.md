@@ -401,15 +401,36 @@ after a real event with id 7 flows, subsequent pings carry `id: 7`.
 
 ---
 
-## 7. The browser UI bundle
+## 7. The browser UI
 
-The UI is a static bundle (one HTML page plus the editor's asset tree,
-served from the application's own origin, no CDN). Any implementation MAY
-serve the same bundle the Node core builds; it then only needs the routes of
-§6. The page fetches `../<channel>` for SSE and POST, loads the editor from
-`vs/loader.js` relative to the UI page, and renders every SSE payload as text
-(never as HTML). The asset route MUST reject any path that escapes the asset
-root and answer 404 for misses.
+The browser UI is served from the application's own origin (no CDN) and has
+two parts with different natures:
+
+- **The UI bundle** (`<base>/<channel>/vs/*`) is static: the Monaco editor
+  asset tree that the Node core copies from `monaco-editor` at build time.
+  Any implementation MAY serve the same tree the Node core ships, byte for
+  byte. The asset route MUST reject any path that escapes the asset root and
+  MUST answer 404 for misses.
+- **The UI page** (`<base>/<channel>/ui`) is NOT a static file. It is a
+  small HTML template rendered per request (`renderReplUi(channel)` in the
+  Node core) that inlines the channel name into an inline `<script>`. The
+  channel comes from the URL, so it is attacker-controlled. Another
+  implementation MUST port the template and apply the same escaping rules:
+  1. Embed the channel in the script as a JSON string literal
+     (`JSON.stringify(channel)`), never by plain concatenation.
+  2. In that literal, replace every `<` with `\u003c`, so the HTML tokenizer
+     (which runs before any JavaScript) never sees a `</script>` sequence.
+  3. In that literal, replace U+2028 and U+2029 with `\u2028` and `\u2029`
+     (JSON allows them raw; JavaScript source treats them as line
+     terminators).
+  4. Where the channel appears in HTML text (the `<title>`), strip `<`, `>`,
+     `"`, `'` and `&`.
+  5. Build the SSE and POST URL with `encodeURIComponent(channel)` and render
+     every SSE payload via `textContent`, never `innerHTML`.
+
+The page fetches `../<channel>` (relative to the UI page) for SSE and POST
+and loads the editor from `vs/loader.js`, also relative to the UI page. An
+implementation that serves both parts then only needs the routes of §6.
 
 ---
 

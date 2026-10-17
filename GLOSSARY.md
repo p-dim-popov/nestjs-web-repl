@@ -114,9 +114,19 @@ with a cursor. The buffer per channel is bounded.
 _Avoid_: catch-up, history
 
 **UI bundle**:
-The self-contained browser UI (HTML page plus editor assets) that the core
-ships and every adapter serves from the own origin of the app.
-_Avoid_: frontend, web app, Monaco (one component of the bundle)
+The static Monaco editor asset tree (`vs/`) that the core copies from
+`monaco-editor` at build time and every adapter serves, unchanged, from the
+own origin of the app under `<base>/<channel>/vs/*`. It is the only static
+part of the browser UI; the page itself is the UI page.
+_Avoid_: frontend, web app, Monaco (the editor, not the tree), static UI
+
+**UI page**:
+The small HTML template (`renderReplUi(channel)` in the core) that an adapter
+renders per request for `<base>/<channel>/ui`. It inlines the channel name
+into an inline script with script-context escaping and loads the editor from
+the UI bundle. It is not a static file: another implementation must port the
+template and its escaping rules (protocol §7).
+_Avoid_: UI bundle (the asset tree), index.html, static page
 
 **Shim**:
 The `nestjs-web-repl` package: the legacy name kept as a pure re-export of the

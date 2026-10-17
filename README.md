@@ -25,7 +25,7 @@ a thin shim over the `@remote-repl` packages. See [Packages](#packages).
 
 | Package               | What it is                                                                                                        | Install                                             |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `@remote-repl/core`   | The engine, the protocol types, the in-memory transport, the UI bundle and the shared handler layer. No framework. | A dependency of the adapters. Install it directly only to write a new adapter. |
+| `@remote-repl/core`   | The engine, the protocol types, the in-memory transport, the browser UI (the per-request UI page plus the Monaco UI bundle) and the shared handler layer. No framework. | A dependency of the adapters. Install it directly only to write a new adapter. |
 | `@remote-repl/nestjs` | The NestJS adapter: `WebReplModule.register` / `registerAsync`, the controller, the DI-container context.          | `npm install @remote-repl/nestjs`                   |
 | `@remote-repl/express`| The Express adapter: `createReplEngine` + `createReplRouter`. Mount the router, the mount path is the base path.  | `npm install @remote-repl/express @remote-repl/core` |
 | `@remote-repl/redis`  | The Redis transports (`ioredis` and `node-redis`) for several instances, with an optional topic `prefix`.          | `npm install @remote-repl/redis` plus `ioredis` or `redis` |
@@ -278,7 +278,7 @@ command POST, the Monaco assets, and the redirect.
 
 ### How the browser UI authenticates
 
-Your guard runs in front of every route. The bundled UI sends only what a browser
+Your guard runs in front of every route. The UI page sends only what a browser
 attaches on its own to a **same-origin** request. That is **cookies**, and
 **HTTP auth credentials** from a `WWW-Authenticate` challenge. It sets no
 `Authorization` header of its own. The SSE stream uses `EventSource`, which cannot
@@ -452,7 +452,9 @@ transport contract, the three topics and the prefix convention, the message
 shapes, the ownership and lease rules, and the SSE event format. The JSON Schema
 in `packages/core/schema/protocol.schema.json` is generated from the TypeScript
 types, and CI fails when the two diverge. An implementation in another language
-that follows the spec can join a cluster and serve the same UI bundle.
+that follows the spec can join a cluster and serve the same browser UI: the
+Monaco asset tree (the UI bundle) as is, plus a port of the small per-request
+UI page template and its escaping rules (spec §7).
 
 The spec version is documentation only. Messages carry no version field, and
 there is no handshake. Mixed-version clusters are not a supported scenario:
