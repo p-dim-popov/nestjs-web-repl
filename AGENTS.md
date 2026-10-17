@@ -231,9 +231,16 @@ change or that spec goes red. Packages live under `packages/`:
     buildContext, logger? })`: builds a `RemoteReplEngine` for an app with no
     DI. The caller owns `start()` / `stop()`; `start()` is a no-op when
     disabled (subscribes to nothing).
-  - `src/repl-router.spec.ts` (supertest, fake engine: mirrors the NestJS
-    controller spec incl. the heartbeat `id: 5` ×3 case, UI escaping, asset
-    traversal, mount-path-as-base, disconnect → `return()`),
+  - `test/repl-router.suite.ts` — the router's HTTP contract (supertest, fake
+    engine: mirrors the NestJS controller spec incl. the heartbeat `id: 5` ×3
+    case, UI escaping, asset traversal, mount-path-as-base, disconnect →
+    `return()`, disabled engine → 404 on all five routes), run once per
+    supported Express major: `src/repl-router.spec.ts` (Express 5, the
+    devDependency) and `src/repl-router.express4.spec.ts` (Express 4 via the
+    `express4` = `npm:express@4` alias devDependency, `vi.mock`ed over
+    `express` so the router module itself resolves v4; each leg asserts its
+    major). Keep both legs green: they are what backs the `^4.16 || ^5` peer
+    range. `test/` is outside the build (`tsconfig.build.json` excludes it).
     `src/integration.spec.ts` (real engine + in-memory transport round trip,
     disabled engine subscribes to nothing, auth middleware in front → 401).
   - `example/main.ts` — runnable host app: `REPL_ENABLED` (default off),

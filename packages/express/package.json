@@ -44,6 +44,7 @@
     "@types/node": "^20",
     "@types/supertest": "^6",
     "express": "^5",
+    "express4": "npm:express@^4.22.3",
     "supertest": "^7",
     "ts-node": "^10.9.2",
     "typescript": "^5",
